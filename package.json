@@ -2,13 +2,18 @@
   "name": "reconciliation-workspace",
   "version": "1.0.0",
   "description": "Bank Statement Credit Mapping & Reconciliation Workspace",
-  "main": "server.js",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
+    "build": "echo 'Static build complete'",
     "test": "node test_reconciliation.js"
   },
-  "keywords": [],
+  "keywords": [
+    "reconciliation",
+    "banking",
+    "invoicing",
+    "ifimed"
+  ],
   "author": "",
   "license": "ISC"
 }
