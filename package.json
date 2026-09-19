@@ -1,0 +1,14 @@
+{
+  "name": "reconciliation-workspace",
+  "version": "1.0.0",
+  "description": "Bank Statement Credit Mapping & Reconciliation Workspace",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node test_reconciliation.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
