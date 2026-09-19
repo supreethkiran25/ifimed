@@ -603,6 +603,12 @@ function switchView(viewName) {
     if (currentCrumb) currentCrumb.textContent = 'Bank statements';
     renderAll();
   }
+
+  // Auto-close mobile drawer if open
+  const appSidebar = document.querySelector('.app-sidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  if (appSidebar) appSidebar.classList.remove('open');
+  if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
 }
 
 // =============================================================================
@@ -1645,7 +1651,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Done event listeners
+  // 13. Mobile Sidebar Drawer Toggle
+  const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');
+  const appSidebar = document.querySelector('.app-sidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+  if (mobileSidebarToggle && appSidebar) {
+    mobileSidebarToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = appSidebar.classList.toggle('open');
+      if (sidebarBackdrop) sidebarBackdrop.classList.toggle('open', isOpen);
+    });
+  }
+
+  if (sidebarBackdrop && appSidebar) {
+    sidebarBackdrop.addEventListener('click', () => {
+      appSidebar.classList.remove('open');
+      sidebarBackdrop.classList.remove('open');
+    });
+  }
 
   // Initial Boot
   renderAll();

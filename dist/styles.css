@@ -77,6 +77,12 @@
   padding: 0;
 }
 
+html {
+  box-sizing: border-box;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-canvas);
@@ -85,6 +91,9 @@ body {
   font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 /* ==========================================================================
@@ -101,12 +110,34 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
+  max-width: 100vw;
 }
 
 .top-navbar-left {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+}
+
+.mobile-sidebar-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.mobile-sidebar-toggle:hover {
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
 }
 
 .header-logo-wrap {
@@ -246,6 +277,27 @@ body {
   display: flex;
   min-height: calc(100vh - 54px);
   width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Sidebar Backdrop (Overlay on mobile/tablet) */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 89;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Left Navigation Sidebar */
@@ -333,7 +385,10 @@ body {
   flex: 1;
   padding: 24px 32px 48px;
   overflow-y: auto;
+  overflow-x: hidden;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   background: var(--bg-canvas);
 }
 
@@ -1726,7 +1781,21 @@ body {
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
-/* Responsive adjustments */
+/* ==========================================================================
+   STRICT RESPONSIVE ENGINE (All Devices: Mobile, Tablet, Laptop, Desktop)
+   ========================================================================== */
+
+/* Large Laptop / Desktop Tweaks */
+@media (max-width: 1280px) {
+  .main-content-scroll {
+    padding: 20px 24px 44px;
+  }
+  .kpi-grid {
+    gap: 12px;
+  }
+}
+
+/* Tablet & Landscape Devices */
 @media (max-width: 1024px) {
   .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1736,5 +1805,345 @@ body {
   }
   .dashboard-cards-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Medium Tablets & Mobile Drawer Navigation (< 992px) */
+@media (max-width: 992px) {
+  .mobile-sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 54px;
+    bottom: 0;
+    left: 0;
+    width: 260px;
+    max-width: 82vw;
+    height: calc(100vh - 54px);
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 90;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-content-scroll {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 18px 40px;
+  }
+}
+
+/* Small Tablets & Mobile Phones (< 768px) */
+@media (max-width: 768px) {
+  .top-navbar {
+    height: 52px;
+    padding: 0 14px;
+  }
+
+  .header-v-divider {
+    display: none;
+  }
+
+  .top-breadcrumbs {
+    display: none; /* Keep header clean on small viewports */
+  }
+
+  .global-search-box {
+    width: auto;
+    padding: 6px 10px;
+  }
+
+  .global-search-box .search-placeholder-text,
+  .global-search-box .search-kbd-badge {
+    display: none;
+  }
+
+  .user-details-col {
+    display: none; /* Show only user avatar circle */
+  }
+
+  .page-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .page-main-heading {
+    font-size: 20px;
+  }
+
+  .page-main-subheading {
+    font-size: 12.5px;
+  }
+
+  .bank-desk-pill-wrap {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .bank-selector-dropdown-wrap {
+    width: 100%;
+  }
+
+  .bank-selector-pill {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 14px;
+  }
+
+  .bank-dropdown-menu {
+    width: 100%;
+    max-width: 100%;
+    right: auto;
+    left: 0;
+  }
+
+  .content-card {
+    padding: 16px 14px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .card-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-header-actions {
+    width: 100%;
+  }
+
+  .card-header-actions .btn {
+    width: 100%;
+  }
+
+  .mapping-desk-toolbar {
+    width: 100%;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .search-input-wrapper {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .mapping-desk-toolbar .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .filter-dropdown-container {
+    flex: 1 1 auto;
+  }
+
+  .filter-dropdown-container .btn-filter {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .filter-menu-popover {
+    left: 0;
+    right: auto;
+    width: 100%;
+    min-width: 180px;
+  }
+
+  /* Tables Fluid Scroll Containment */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+  }
+
+  .credit-mapping-table {
+    min-width: 720px;
+  }
+
+  /* Inline Confirmation Drawer */
+  .inline-confirm-box {
+    margin: 8px 4px;
+    padding: 14px 12px;
+  }
+
+  .confirm-data-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .confirm-narration-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .confirm-actions-toolbar {
+    flex-direction: column-reverse;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .confirm-actions-toolbar .btn-confirm-cancel,
+  .confirm-actions-toolbar .btn-confirm-submit {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    padding: 10px;
+  }
+
+  /* Table Footer Bar */
+  .table-footer-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .footer-left-info {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .footer-right-info {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 8px;
+  }
+
+  /* Modals Sheet Behavior on Mobile */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-dialog {
+    max-width: 100%;
+    width: 100%;
+    max-height: 88vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-body {
+    overflow-y: auto;
+    padding: 16px;
+    max-height: calc(88vh - 125px);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .command-palette-dialog {
+    width: 100%;
+    max-width: 100%;
+    margin: 12px;
+    border-radius: var(--radius-md);
+  }
+}
+
+/* Extra Small Phones (< 576px down to 320px) */
+@media (max-width: 576px) {
+  .main-content-scroll {
+    padding: 12px 10px 32px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .kpi-card {
+    padding: 14px;
+    min-height: auto;
+  }
+
+  .kpi-card-amount {
+    font-size: 19px;
+  }
+
+  .kpi-card-subtext {
+    font-size: 11.5px;
+  }
+
+  .dropzone-inner-content {
+    padding: 10px;
+  }
+
+  .credit-mapping-table th,
+  .credit-mapping-table td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .narration-primary {
+    font-size: 12px;
+  }
+
+  .cell-input-mapping {
+    max-width: 150px;
+  }
+
+  .toast-notification {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    border-radius: var(--radius-sm);
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* Compact Screens (< 380px) */
+@media (max-width: 380px) {
+  .top-navbar {
+    padding: 0 10px;
+  }
+
+  .header-logo {
+    height: 26px;
+    max-width: 110px;
+  }
+
+  .page-main-heading {
+    font-size: 18px;
+  }
+
+  .btn {
+    padding: 6px 10px;
+    font-size: 11.5px;
   }
 }
