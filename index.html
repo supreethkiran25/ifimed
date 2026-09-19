@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2.2">
 </head>
 <body>
 
@@ -153,14 +153,14 @@
 
         <!-- 4 KPI Summary Cards in a Grid -->
         <div class="kpi-grid">
-          <!-- Card 1: Total Credits -->
+          <!-- Card 1: Total Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label">TOTAL CREDITS · THIS MONTH</span>
-              <div class="kpi-icon-circle icon-circle-blue">
+              <span class="kpi-header-label" id="kpiTotalHeader">TOTAL CREDITS · THIS MONTH</span>
+              <div class="kpi-icon-circle icon-circle-blue" id="kpiTotalIcon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="7" y1="17" x2="17" y2="7"></line>
-                  <polyline points="7 7 17 7 17 17"></polyline>
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                  <polyline points="17 17 7 17 7 7"></polyline>
                 </svg>
               </div>
             </div>
@@ -170,10 +170,10 @@
             </div>
           </div>
 
-          <!-- Card 2: Mapped Credits -->
+          <!-- Card 2: Mapped Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label">MAPPED CREDITS</span>
+              <span class="kpi-header-label" id="kpiMappedHeader">MAPPED CREDITS</span>
               <div class="kpi-icon-circle icon-circle-green">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
@@ -186,10 +186,10 @@
             </div>
           </div>
 
-          <!-- Card 3: Unmapped Credits -->
+          <!-- Card 3: Unmapped Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label">UNMAPPED CREDITS</span>
+              <span class="kpi-header-label" id="kpiUnmappedHeader">UNMAPPED CREDITS</span>
               <div class="kpi-icon-circle icon-circle-amber">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -204,10 +204,10 @@
             </div>
           </div>
 
-          <!-- Card 4: Credit Trend with 6-Month Mini Bar Chart -->
+          <!-- Card 4: Trend with 6-Month Mini Bar Chart -->
           <div class="kpi-card kpi-trend-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label">CREDIT TREND</span>
+              <span class="kpi-header-label" id="kpiTrendHeader">CREDIT TREND</span>
               <span class="trend-badge-sub">6 months</span>
             </div>
             <div class="kpi-trend-content">
@@ -296,15 +296,38 @@
           </div>
         </div>
 
-        <!-- Credit Mapping Desk Section Card (Matching Screenshot 2) -->
+        <!-- Mapping Desk Section Card (Supports both Credit Mapping and Debit Mapping) -->
         <div class="content-card credit-mapping-card" id="mappingSection">
+          
+          <!-- Desk Mode Segmented Switcher (Credits vs Debits) -->
+          <div class="mapping-desk-tabs-bar">
+            <div class="mapping-desk-tabs" role="tablist" aria-label="Reconciliation Desk Mode">
+              <button type="button" class="desk-tab-btn active" id="tabCreditMode" role="tab" aria-selected="true" data-mode="credit" onclick="switchMappingMode('credit')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                  <polyline points="17 17 7 17 7 7"></polyline>
+                </svg>
+                <span>Credit mapping (Inflow)</span>
+                <span class="desk-tab-badge" id="tabCreditBadge">0</span>
+              </button>
+              <button type="button" class="desk-tab-btn" id="tabDebitMode" role="tab" aria-selected="false" data-mode="debit" onclick="switchMappingMode('debit')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="7" y1="17" x2="17" y2="7"></line>
+                  <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+                <span>Debit mapping (Outflow)</span>
+                <span class="desk-tab-badge" id="tabDebitBadge">0</span>
+              </button>
+            </div>
+          </div>
+
           <div class="card-header-bar">
             <div class="card-header-titles">
               <div class="title-with-badge">
-                <h2 class="card-title">Credit mapping</h2>
+                <h2 class="card-title" id="mappingCardTitle">Credit mapping</h2>
                 <span class="records-pill-badge" id="mappedCountDisplay">86 records</span>
               </div>
-              <p class="card-subtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
+              <p class="card-subtitle" id="mappingCardSubtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
             </div>
 
             <div class="mapping-desk-toolbar">
@@ -328,7 +351,7 @@
 
                 <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;">
                   <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll">
-                    All Credits (<span id="countAll">0</span>)
+                    All (<span id="countAll">0</span>)
                   </button>
                   <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped">
                     Pending (<span id="countUnmapped">0</span>)
@@ -339,28 +362,55 @@
                 </div>
               </div>
 
-              <!-- Invoice Management Actions (Neatly integrated in mapping toolbar) -->
-              <button type="button" class="btn btn-white-border btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                <span>Add Invoice</span>
-              </button>
+              <!-- Credit Mode Actions -->
+              <div class="mode-actions-group" id="creditActionsGroup">
+                <button type="button" class="btn btn-white-border btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>Add Invoice</span>
+                </button>
 
-              <button type="button" class="btn btn-white-border btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <span>Upload Invoices</span>
-              </button>
-              <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
+                <button type="button" class="btn btn-white-border btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>Upload Invoices</span>
+                </button>
+                <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
 
-              <button type="button" class="btn btn-ghost btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
-                <span class="invoice-count-pill" id="totalInvoicesCountBadge">15 Invoices</span>
-              </button>
+                <button type="button" class="btn btn-ghost btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
+                  <span class="invoice-count-pill" id="totalInvoicesCountBadge">15 Invoices</span>
+                </button>
+              </div>
+
+              <!-- Debit Mode Actions -->
+              <div class="mode-actions-group" id="debitActionsGroup" style="display: none;">
+                <button type="button" class="btn btn-white-border btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>Add Vendor Bill</span>
+                </button>
+
+                <button type="button" class="btn btn-white-border btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>Upload Bills</span>
+                </button>
+                <input type="file" id="billCsvInput" accept=".csv,text/csv" class="hidden-input">
+
+                <button type="button" class="btn btn-ghost btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
+                  <span class="invoice-count-pill bill-count-pill" id="totalBillsCountBadge">6 Vendor Bills</span>
+                </button>
+              </div>
 
               <!-- Export Reconciled Action -->
               <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV">
@@ -369,21 +419,21 @@
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                <span>Export CSV</span>
+                <span id="exportCsvBtnText">Export CSV</span>
               </button>
             </div>
           </div>
 
-          <!-- High Density Credit Mapping Table -->
+          <!-- High Density Mapping Table (Credits / Debits) -->
           <div class="table-container">
-            <table class="credit-mapping-table" id="creditTable" aria-label="Incoming Bank Credits">
+            <table class="credit-mapping-table" id="creditTable" aria-label="Bank Reconciliation Table">
               <thead>
                 <tr>
                   <th scope="col" class="th-date">DATE</th>
                   <th scope="col" class="th-narration">PARTICULAR / NARRATION</th>
                   <th scope="col" class="th-ref">BANK REFERENCE</th>
-                  <th scope="col" class="th-amount text-right">CREDIT AMOUNT</th>
-                  <th scope="col" class="th-mapping">INVOICE MAPPING</th>
+                  <th scope="col" class="th-amount text-right" id="thAmountLabel">CREDIT AMOUNT</th>
+                  <th scope="col" class="th-mapping" id="thMappingLabel">INVOICE MAPPING</th>
                   <th scope="col" class="th-status">STATUS</th>
                   <th scope="col" class="th-actions text-center">ACTIONS</th>
                 </tr>
@@ -400,8 +450,8 @@
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="8" y1="12" x2="16" y2="12"></line>
             </svg>
-            <h3>No matching credit records found</h3>
-            <p>Try refining your search query or switching your active filter.</p>
+            <h3 id="emptyStateTitle">No matching credit records found</h3>
+            <p id="emptyStateDesc">Try refining your search query or switching your active filter.</p>
           </div>
 
           <!-- Table Footer Totals Bar -->
@@ -412,7 +462,7 @@
               <span class="footer-bank-detail" id="footerBankDetails">Canara Bank Current A/c ••4092</span>
             </div>
             <div class="footer-right-info">
-              <span class="subtotal-label">Subtotal Inflow:</span>
+              <span class="subtotal-label" id="footerSubtotalLabel">Subtotal Inflow:</span>
               <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 0.00</span>
             </div>
           </div>
@@ -670,6 +720,110 @@
     </div>
   </div>
 
+  <!-- Modal 3B: Add Vendor Bill Manually -->
+  <div class="modal-overlay" id="addBillModal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge icon-circle-rose">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <line x1="10" y1="9" x2="8" y2="9"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Add Vendor Bill Manually</h3>
+            <p class="modal-subtitle">Add a vendor purchase bill or expense voucher for outgoing debit matching.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeAddBillModalBtn">&times;</button>
+      </div>
+
+      <form id="addBillForm" class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newBillNo" class="form-label">Bill / Voucher Number <span class="text-danger">*</span></label>
+            <input type="text" id="newBillNo" class="form-control font-mono" placeholder="e.g. BILL-2026-088" required>
+          </div>
+          <div class="form-group">
+            <label for="newBillAmount" class="form-label">Bill Amount (₹) <span class="text-danger">*</span></label>
+            <input type="number" id="newBillAmount" step="0.01" min="1" class="form-control font-mono" placeholder="e.g. 180000.00" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newBillVendor" class="form-label">Vendor / Supplier / Payee <span class="text-danger">*</span></label>
+          <input type="text" id="newBillVendor" class="form-control" placeholder="e.g. Bharat Chemical Synthetics Ltd" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newBillDate" class="form-label">Bill Date</label>
+            <input type="text" id="newBillDate" class="form-control" placeholder="e.g. 18 Sep 2026">
+          </div>
+          <div class="form-group">
+            <label for="newBillCategory" class="form-label">Expense Head / Category</label>
+            <input type="text" id="newBillCategory" class="form-control" placeholder="e.g. Active Pharma Ingredients (API)">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="cancelAddBillBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: #e11d48; border-color: #e11d48;">Save & Add Vendor Bill</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3C: View Vendor Bills Catalog -->
+  <div class="modal-overlay" id="billsCatalogModal" style="display: none;">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge icon-circle-rose">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Vendor Bills & Expenses Catalog</h3>
+            <p class="modal-subtitle">Registered supplier payables and operational expense vouchers.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeBillsCatalogBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-search-row">
+          <input type="text" id="billCatalogSearch" class="form-control" placeholder="Search bill #, vendor name, or expense category...">
+        </div>
+        <div class="modal-table-wrap">
+          <table class="credit-mapping-table" id="catalogBillsTable">
+            <thead>
+              <tr>
+                <th>BILL / VOUCHER #</th>
+                <th>VENDOR / PAYEE</th>
+                <th>AMOUNT</th>
+                <th>DATE</th>
+                <th>CATEGORY / EXPENSE HEAD</th>
+              </tr>
+            </thead>
+            <tbody id="catalogBillsTableBody">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="doneBillsCatalogBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal 4: Global Command Palette (⌘ K / Ctrl+K) -->
   <div class="modal-overlay" id="commandPaletteModal" style="display: none;">
     <div class="command-palette-dialog">
@@ -695,7 +849,7 @@
         <button type="button" class="modal-close-btn" id="closeUnlinkModalBtn">&times;</button>
       </div>
       <div class="modal-body">
-        <p>Are you sure you want to unlink this credit from invoice <strong id="unlinkInvoiceNo">—</strong>?</p>
+        <p>Are you sure you want to unlink this transaction from <strong id="unlinkInvoiceNo">—</strong>?</p>
         <p class="text-muted" style="font-size: 12.5px; margin-top: 8px;">The transaction will return to pending status and be available for re-mapping.</p>
       </div>
       <div class="modal-footer">
@@ -724,6 +878,6 @@
   <span id="kpiProgressSubtext" style="display: none;"></span>
 
   <!-- Application Logic -->
-  <script src="app.js"></script>
+  <script src="app.js?v=2.2"></script>
 </body>
 </html>

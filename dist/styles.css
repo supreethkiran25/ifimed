@@ -952,7 +952,120 @@ body {
   background: #10b981;
 }
 
-/* Credit Mapping Desk Toolbar */
+/* Mapping Desk Tabs Bar */
+.mapping-desk-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mapping-desk-tabs {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 3px;
+}
+
+.desk-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 0.15s ease;
+}
+
+.desk-tab-btn * {
+  pointer-events: none;
+}
+
+.desk-tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.desk-tab-btn:active {
+  transform: scale(0.98);
+}
+
+.desk-tab-btn:focus-visible {
+  outline: 2px solid #1877f2;
+  outline-offset: 1px;
+}
+
+.desk-tab-btn.active {
+  background: #ffffff;
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.desk-tab-btn.active[data-mode="credit"] svg {
+  color: #1877f2;
+}
+
+.desk-tab-btn.active[data-mode="debit"] svg {
+  color: #e11d48;
+}
+
+.desk-tab-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: #e2e8f0;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.desk-tab-btn.active .desk-tab-badge {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.desk-tab-btn.active[data-mode="debit"] .desk-tab-badge {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.mode-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.amount-text.amount-debit {
+  color: #be123c;
+}
+
+.bill-count-pill {
+  background: #ffe4e6 !important;
+  color: #be123c !important;
+}
+
+.icon-circle-rose {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+
+.mapped-tag-badge.badge-bill {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+/* Credit / Debit Mapping Desk Toolbar */
 .mapping-desk-toolbar {
   display: flex;
   align-items: center;
@@ -1995,6 +2108,36 @@ body {
 
   .card-header-actions .btn {
     width: 100%;
+  }
+
+  .mapping-desk-tabs-bar {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+
+  .mapping-desk-tabs {
+    width: 100%;
+  }
+
+  .desk-tab-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 7px 8px;
+    font-size: 11.5px;
+  }
+
+  .mode-actions-group {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mode-actions-group .btn {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .mapping-desk-toolbar {

@@ -27,6 +27,18 @@ let appInvoices = [
   { invoiceNo: 'INV-IFM-2026-022', guestName: 'Manipal Hospitals', amount: 145000, category: 'ICU Injectables & IV Fluids', date: '18 Sep 2026' }
 ];
 
+// Default Vendor Purchase Bills & Operational Expenses Catalog (Dynamic store for debit matching)
+let appVendorBills = [
+  { billNo: 'BILL-2026-081', vendorName: 'Bharat Chemical Synthetics Ltd', amount: 180000, category: 'Active Pharma Ingredients (API)', date: '18 Sep 2026' },
+  { billNo: 'BILL-2026-079', vendorName: 'Omega Packaging & Cartons', amount: 42500, category: 'Blister Pack Foil & Cartons', date: '17 Sep 2026' },
+  { billNo: 'BILL-2026-075', vendorName: 'BlueDart Express Logistics', amount: 16800, category: 'Cold Chain Freight & Shipping', date: '16 Sep 2026' },
+  { billNo: 'BILL-2026-072', vendorName: 'Torrent Power Utilities', amount: 64200, category: 'Manufacturing Plant Electricity', date: '15 Sep 2026' },
+  { billNo: 'BILL-2026-068', vendorName: 'Shree Logistics Warehousing', amount: 85000, category: 'Warehouse Lease & Storage', date: '14 Sep 2026' },
+  { billNo: 'BILL-2026-065', vendorName: 'Dr. Reddy Labs Testing', amount: 35000, category: 'Analytical Quality Testing', date: '14 Sep 2026' },
+  { billNo: 'BILL-2026-059', vendorName: 'Astra Bio-Clean Services', amount: 22400, category: 'Cleanroom Sanitization Supplies', date: '12 Sep 2026' },
+  { billNo: 'BILL-2026-054', vendorName: 'Siemens Healthineers AMC', amount: 115000, category: 'Spectrometry Equipment Maintenance', date: '11 Sep 2026' }
+];
+
 // Initial Canara Bank Statement Sheets
 const CANARA_SHEETS = [
   {
@@ -165,6 +177,90 @@ const CANARA_SHEETS = [
         status: 'unmapped',
         mapping: null
       }
+    ],
+    debitRecords: [
+      {
+        id: 'DR-202609-01',
+        date: '18 Sep 2026',
+        narration: 'NEFT/BARB00291/BHARAT CHEMICAL SYNTHETICS/API-RM-49',
+        payer: 'Bharat Chemical Synthetics Ltd',
+        type: 'NEFT',
+        bankRef: 'NEFT N91823019',
+        amount: 180000,
+        status: 'unmapped',
+        mapping: null
+      },
+      {
+        id: 'DR-202609-02',
+        date: '17 Sep 2026',
+        narration: 'RTGS/HDFC001928/OMEGA PACKAGING/BLISTER FOIL',
+        payer: 'Omega Packaging & Cartons',
+        type: 'RTGS',
+        bankRef: 'RTGS R82910381',
+        amount: 42500,
+        status: 'unmapped',
+        mapping: null
+      },
+      {
+        id: 'DR-202609-03',
+        date: '16 Sep 2026',
+        narration: 'UPI/BLUEDART LOGISTICS/COLD CHAIN EXP',
+        payer: 'BlueDart Express Logistics',
+        type: 'UPI',
+        bankRef: 'UPI 8819203',
+        amount: 16800,
+        status: 'mapped',
+        mapping: {
+          invoiceNo: 'BILL-2026-075',
+          billNo: 'BILL-2026-075',
+          guestName: 'BlueDart Express Logistics',
+          vendorName: 'BlueDart Express Logistics',
+          mappedAt: '16 Sep 2026 05:10 PM',
+          mappedBy: 'Boss (Accounts Controller)',
+          isNote: false
+        }
+      },
+      {
+        id: 'DR-202609-04',
+        date: '15 Sep 2026',
+        narration: 'BILLPAY/TORRENT POWER/PLANT ENERGY SEP',
+        payer: 'Torrent Power Utilities',
+        type: 'NEFT',
+        bankRef: 'NEFT N48102931',
+        amount: 64200,
+        status: 'unmapped',
+        mapping: null
+      },
+      {
+        id: 'DR-202609-05',
+        date: '14 Sep 2026',
+        narration: 'RTGS/SHREE LOGISTICS/WH LEASE SEP',
+        payer: 'Shree Logistics Warehousing',
+        type: 'RTGS',
+        bankRef: 'RTGS R11928374',
+        amount: 85000,
+        status: 'mapped',
+        mapping: {
+          invoiceNo: 'BILL-2026-068',
+          billNo: 'BILL-2026-068',
+          guestName: 'Shree Logistics Warehousing',
+          vendorName: 'Shree Logistics Warehousing',
+          mappedAt: '14 Sep 2026 02:45 PM',
+          mappedBy: 'Boss (Accounts Controller)',
+          isNote: false
+        }
+      },
+      {
+        id: 'DR-202609-06',
+        date: '14 Sep 2026',
+        narration: 'CHQ 001928 - DR REDDYS LAB TESTING',
+        payer: 'Dr. Reddy Labs Testing',
+        type: 'CHQ',
+        bankRef: 'CHQ-001928',
+        amount: 35000,
+        status: 'unmapped',
+        mapping: null
+      }
     ]
   },
   {
@@ -200,6 +296,38 @@ const CANARA_SHEETS = [
         type: 'UPI',
         bankRef: 'UPI-62489201823',
         amount: 38500,
+        status: 'unmapped',
+        mapping: null
+      }
+    ],
+    debitRecords: [
+      {
+        id: 'DR-202608-01',
+        date: '27 Aug 2026',
+        narration: 'RTGS/SIEMENS HEALTHINEERS/SPECTROMETRY AMC',
+        payer: 'Siemens Healthineers AMC',
+        type: 'RTGS',
+        bankRef: 'RTGS-SIEM-202608',
+        amount: 115000,
+        status: 'mapped',
+        mapping: {
+          billNo: 'BILL-2026-054',
+          invoiceNo: 'BILL-2026-054',
+          vendorName: 'Siemens Healthineers AMC',
+          guestName: 'Siemens Healthineers AMC',
+          mappedAt: '27 Aug 2026',
+          mappedBy: 'Boss (Accounts Controller)',
+          isNote: false
+        }
+      },
+      {
+        id: 'DR-202608-02',
+        date: '24 Aug 2026',
+        narration: 'UPI/ASTRA BIO CLEAN/CLEANROOM SANITIZATION',
+        payer: 'Astra Bio-Clean Services',
+        type: 'UPI',
+        bankRef: 'UPI-ASTRA-8291',
+        amount: 22400,
         status: 'unmapped',
         mapping: null
       }
@@ -329,6 +457,38 @@ const CORPORATE_BANKS = [
             status: 'unmapped',
             mapping: null
           }
+        ],
+        debitRecords: [
+          {
+            id: 'HDFC-DR-202609-01',
+            date: '18 Sep 2026',
+            narration: 'NEFT-DR-HDFCN008819-THERMO FISHER LAB REAGENTS',
+            payer: 'Thermo Fisher Scientific',
+            type: 'NEFT',
+            bankRef: 'HDFCN00881920',
+            amount: 98000,
+            status: 'unmapped',
+            mapping: null
+          },
+          {
+            id: 'HDFC-DR-202609-02',
+            date: '16 Sep 2026',
+            narration: 'RTGS-DR-KOTAK00918-BENGALURU WAREHOUSE LEASE',
+            payer: 'Prestige Industrial Parks',
+            type: 'RTGS',
+            bankRef: 'KOTAKR520260916',
+            amount: 175000,
+            status: 'mapped',
+            mapping: {
+              billNo: 'BILL-HDFC-019',
+              invoiceNo: 'BILL-HDFC-019',
+              vendorName: 'Prestige Industrial Parks',
+              guestName: 'Prestige Industrial Parks',
+              mappedAt: '16 Sep 2026 04:10 PM',
+              mappedBy: 'Boss (Accounts Controller)',
+              isNote: false
+            }
+          }
         ]
       }
     ]
@@ -378,6 +538,19 @@ const CORPORATE_BANKS = [
               isNote: false
             }
           }
+        ],
+        debitRecords: [
+          {
+            id: 'SBI-DR-202609-01',
+            date: '17 Sep 2026',
+            narration: 'NEFT-DR-SBIN004819-BHARAT PETROLEUM GENERATOR DIESEL',
+            payer: 'Bharat Petroleum Corp Ltd',
+            type: 'NEFT',
+            bankRef: 'SBIN0048192018',
+            amount: 82000,
+            status: 'unmapped',
+            mapping: null
+          }
         ]
       }
     ]
@@ -393,6 +566,7 @@ let recentActivities = [
 
 // Active State
 let currentActiveView = 'bank-statements'; // 'dashboard' | 'bank-statements'
+let activeMappingMode = 'credit'; // 'credit' (Inflow) | 'debit' (Outflow)
 let selectedBankId = 'canara-4092';
 let selectedMonthId = '2026-09';
 let activeFilter = 'all'; // 'all' | 'unmapped' | 'mapped'
@@ -427,7 +601,7 @@ const pageBankSubheading = document.getElementById('pageBankSubheading');
 const statementFilesSubtitle = document.getElementById('statementFilesSubtitle');
 const footerBankDetails = document.getElementById('footerBankDetails');
 
-// KPI Displays
+// KPI Displays & Headers
 const kpiTotalAmount = document.getElementById('kpiTotalAmount');
 const kpiTotalCount = document.getElementById('kpiTotalCount');
 const kpiMappedAmount = document.getElementById('kpiMappedAmount');
@@ -435,6 +609,11 @@ const kpiMappedCount = document.getElementById('kpiMappedCount');
 const kpiUnmappedAmount = document.getElementById('kpiUnmappedAmount');
 const kpiUnmappedCount = document.getElementById('kpiUnmappedCount');
 const mappedCountDisplay = document.getElementById('mappedCountDisplay');
+const kpiTotalHeader = document.getElementById('kpiTotalHeader');
+const kpiMappedHeader = document.getElementById('kpiMappedHeader');
+const kpiUnmappedHeader = document.getElementById('kpiUnmappedHeader');
+const kpiTrendHeader = document.getElementById('kpiTrendHeader');
+const kpiTotalIcon = document.getElementById('kpiTotalIcon');
 
 // Statement Files Desk
 const statementFilesTableBody = document.getElementById('statementFilesTableBody');
@@ -442,7 +621,21 @@ const dropZone = document.getElementById('dropZone');
 const bankCsvInput = document.getElementById('bankCsvInput');
 const uploadCsvBtn = document.getElementById('uploadCsvBtn');
 
-// Credit Mapping Desk
+// Desk Tabs & Dynamic Labels
+const tabCreditMode = document.getElementById('tabCreditMode');
+const tabDebitMode = document.getElementById('tabDebitMode');
+const tabCreditBadge = document.getElementById('tabCreditBadge');
+const tabDebitBadge = document.getElementById('tabDebitBadge');
+const mappingCardTitle = document.getElementById('mappingCardTitle');
+const mappingCardSubtitle = document.getElementById('mappingCardSubtitle');
+const thAmountLabel = document.getElementById('thAmountLabel');
+const thMappingLabel = document.getElementById('thMappingLabel');
+const footerSubtotalLabel = document.getElementById('footerSubtotalLabel');
+const emptyStateTitle = document.getElementById('emptyStateTitle');
+const emptyStateDesc = document.getElementById('emptyStateDesc');
+const exportCsvBtnText = document.getElementById('exportCsvBtnText');
+
+// Credit / Debit Mapping Desk
 const creditTableBody = document.getElementById('creditTableBody');
 const tableSearchInput = document.getElementById('tableSearchInput');
 const filterDropdownBtn = document.getElementById('filterDropdownBtn');
@@ -460,7 +653,11 @@ const currentMonthLabel = document.getElementById('currentMonthLabel');
 const totalCreditAmount = document.getElementById('totalCreditAmount');
 const exportCurrentMonthBtn = document.getElementById('exportCurrentMonthBtn');
 
-// Invoice Actions & Modals
+// Action Groups
+const creditActionsGroup = document.getElementById('creditActionsGroup');
+const debitActionsGroup = document.getElementById('debitActionsGroup');
+
+// Customer Invoice Actions & Modals
 const openAddInvoiceModalBtn = document.getElementById('openAddInvoiceModalBtn');
 const openUploadInvoiceCsvBtn = document.getElementById('openUploadInvoiceCsvBtn');
 const invoiceCsvInput = document.getElementById('invoiceCsvInput');
@@ -477,6 +674,24 @@ const closeInvoicesCatalogBtn = document.getElementById('closeInvoicesCatalogBtn
 const doneInvoicesCatalogBtn = document.getElementById('doneInvoicesCatalogBtn');
 const invoiceCatalogSearch = document.getElementById('invoiceCatalogSearch');
 const catalogInvoicesTableBody = document.getElementById('catalogInvoicesTableBody');
+
+// Vendor Bills Actions & Modals
+const openAddBillModalBtn = document.getElementById('openAddBillModalBtn');
+const openUploadBillCsvBtn = document.getElementById('openUploadBillCsvBtn');
+const billCsvInput = document.getElementById('billCsvInput');
+const viewBillsBtn = document.getElementById('viewBillsBtn');
+const totalBillsCountBadge = document.getElementById('totalBillsCountBadge');
+const addBillModal = document.getElementById('addBillModal');
+const closeAddBillModalBtn = document.getElementById('closeAddBillModalBtn');
+const cancelAddBillBtn = document.getElementById('cancelAddBillBtn');
+const addBillForm = document.getElementById('addBillForm');
+
+// Vendor Bills Catalog Modal
+const billsCatalogModal = document.getElementById('billsCatalogModal');
+const closeBillsCatalogBtn = document.getElementById('closeBillsCatalogBtn');
+const doneBillsCatalogBtn = document.getElementById('doneBillsCatalogBtn');
+const billCatalogSearch = document.getElementById('billCatalogSearch');
+const catalogBillsTableBody = document.getElementById('catalogBillsTableBody');
 
 // Bank Account Modal
 const openAddBankModalBtn = document.getElementById('openAddBankModalBtn');
@@ -707,30 +922,125 @@ function renderStatementFilesTable() {
 }
 
 // =============================================================================
-// 7. Credit Mapping Table Desk & Inline Confirmation (Matching Screenshot 2)
+// 7. Credit & Debit Mapping Desk & Inline Confirmation Drawer
 // =============================================================================
+
+function switchMappingMode(mode) {
+  if (activeMappingMode === mode) return;
+  activeMappingMode = mode;
+  activeConfirmingRowId = null;
+  confirmingInvoiceNo = '';
+  confirmingGuestName = '';
+
+  // Update tab buttons
+  if (tabCreditMode) {
+    tabCreditMode.classList.toggle('active', mode === 'credit');
+    tabCreditMode.setAttribute('aria-selected', mode === 'credit');
+  }
+  if (tabDebitMode) {
+    tabDebitMode.classList.toggle('active', mode === 'debit');
+    tabDebitMode.setAttribute('aria-selected', mode === 'debit');
+  }
+
+  // Update action groups
+  if (creditActionsGroup) creditActionsGroup.style.display = mode === 'credit' ? 'flex' : 'none';
+  if (debitActionsGroup) debitActionsGroup.style.display = mode === 'debit' ? 'flex' : 'none';
+
+  // Update Titles & Subtitles
+  if (mappingCardTitle) {
+    mappingCardTitle.textContent = mode === 'credit' ? 'Credit mapping' : 'Debit mapping';
+  }
+  if (mappingCardSubtitle) {
+    mappingCardSubtitle.textContent = mode === 'credit'
+      ? 'Choose an invoice, review the bank evidence, then confirm the link.'
+      : 'Choose a vendor bill, review the bank evidence, then confirm the link.';
+  }
+
+  // Update Table Headers
+  if (thAmountLabel) {
+    thAmountLabel.textContent = mode === 'credit' ? 'CREDIT AMOUNT' : 'DEBIT AMOUNT';
+  }
+  if (thMappingLabel) {
+    thMappingLabel.textContent = mode === 'credit' ? 'INVOICE MAPPING' : 'VENDOR BILL MAPPING';
+  }
+  if (footerSubtotalLabel) {
+    footerSubtotalLabel.textContent = mode === 'credit' ? 'Subtotal Inflow:' : 'Subtotal Outflow:';
+  }
+  if (exportCsvBtnText) {
+    exportCsvBtnText.textContent = mode === 'credit' ? 'Export CSV' : 'Export Reconciled Debits';
+  }
+
+  // Update KPI Headers
+  if (kpiTotalHeader) {
+    kpiTotalHeader.textContent = mode === 'credit' ? 'TOTAL CREDITS · THIS MONTH' : 'TOTAL DEBITS · THIS MONTH';
+  }
+  if (kpiMappedHeader) {
+    kpiMappedHeader.textContent = mode === 'credit' ? 'MAPPED CREDITS' : 'MAPPED DEBITS';
+  }
+  if (kpiUnmappedHeader) {
+    kpiUnmappedHeader.textContent = mode === 'credit' ? 'UNMAPPED CREDITS' : 'UNMAPPED DEBITS';
+  }
+  if (kpiTrendHeader) {
+    kpiTrendHeader.textContent = mode === 'credit' ? 'CREDIT TREND' : 'DEBIT TREND';
+  }
+  if (kpiTotalIcon) {
+    kpiTotalIcon.className = `kpi-icon-circle ${mode === 'credit' ? 'icon-circle-blue' : 'icon-circle-rose'}`;
+    kpiTotalIcon.innerHTML = mode === 'credit' ? `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="17" y1="7" x2="7" y2="17"></line>
+        <polyline points="17 17 7 17 7 7"></polyline>
+      </svg>
+    ` : `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="7" y1="17" x2="17" y2="7"></line>
+        <polyline points="7 7 17 7 17 17"></polyline>
+      </svg>
+    `;
+  }
+
+  // Update Empty State Texts
+  if (emptyStateTitle) {
+    emptyStateTitle.textContent = mode === 'credit'
+      ? 'No matching credit records found'
+      : 'No matching debit records found';
+  }
+
+  renderAll();
+  showToast(`Switched to ${mode === 'credit' ? 'Credit' : 'Debit'} mapping desk`);
+}
+
+// Expose globally for inline onclick handlers & shortcuts
+window.switchMappingMode = switchMappingMode;
 
 function renderCreditTable() {
   const currentSheet = getCurrentSheet();
   if (currentMonthLabel) currentMonthLabel.textContent = currentSheet.label;
 
-  let records = currentSheet.records || [];
+  const isDebit = activeMappingMode === 'debit';
+  if (!currentSheet.records) currentSheet.records = [];
+  if (!currentSheet.debitRecords) currentSheet.debitRecords = [];
+
+  // Update Tab Badges
+  if (tabCreditBadge) tabCreditBadge.textContent = currentSheet.records.length;
+  if (tabDebitBadge) tabDebitBadge.textContent = currentSheet.debitRecords.length;
+
+  let records = isDebit ? currentSheet.debitRecords : currentSheet.records;
 
   // Stats calculation
   const totalCount = records.length;
   const mappedCount = records.filter(r => r.status === 'mapped' || r.status === 'noted').length;
   const unmappedCount = totalCount - mappedCount;
   
-  const sumCreditAll = records.reduce((acc, r) => acc + r.amount, 0);
-  const sumCreditMapped = records.filter(r => r.status === 'mapped').reduce((acc, r) => acc + r.amount, 0);
-  const sumCreditUnmapped = records.filter(r => r.status === 'unmapped').reduce((acc, r) => acc + r.amount, 0);
+  const sumAmountAll = records.reduce((acc, r) => acc + r.amount, 0);
+  const sumAmountMapped = records.filter(r => r.status === 'mapped').reduce((acc, r) => acc + r.amount, 0);
+  const sumAmountUnmapped = records.filter(r => r.status === 'unmapped').reduce((acc, r) => acc + r.amount, 0);
 
   // Update KPI Cards
-  if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumCreditAll);
+  if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumAmountAll);
   if (kpiTotalCount) kpiTotalCount.textContent = totalCount;
-  if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumCreditMapped);
+  if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumAmountMapped);
   if (kpiMappedCount) kpiMappedCount.textContent = mappedCount;
-  if (kpiUnmappedAmount) kpiUnmappedAmount.textContent = formatINR(sumCreditUnmapped);
+  if (kpiUnmappedAmount) kpiUnmappedAmount.textContent = formatINR(sumAmountUnmapped);
   if (kpiUnmappedCount) kpiUnmappedCount.textContent = unmappedCount;
 
   if (countAllSpan) countAllSpan.textContent = totalCount;
@@ -749,18 +1059,23 @@ function renderCreditTable() {
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase().trim();
     records = records.filter(r => {
-      const matchNarration = r.narration.toLowerCase().includes(q);
+      const matchNarration = r.narration ? r.narration.toLowerCase().includes(q) : false;
       const matchPayer = r.payer ? r.payer.toLowerCase().includes(q) : false;
-      const matchRef = r.bankRef.toLowerCase().includes(q);
+      const matchRef = r.bankRef ? r.bankRef.toLowerCase().includes(q) : false;
       const matchAmount = r.amount.toString().includes(q);
-      const matchInvoice = r.mapping ? r.mapping.invoiceNo.toLowerCase().includes(q) : false;
-      return matchNarration || matchPayer || matchRef || matchAmount || matchInvoice;
+      const matchDoc = r.mapping ? (
+        (r.mapping.invoiceNo && r.mapping.invoiceNo.toLowerCase().includes(q)) ||
+        (r.mapping.billNo && r.mapping.billNo.toLowerCase().includes(q)) ||
+        (r.mapping.guestName && r.mapping.guestName.toLowerCase().includes(q)) ||
+        (r.mapping.vendorName && r.mapping.vendorName.toLowerCase().includes(q))
+      ) : false;
+      return matchNarration || matchPayer || matchRef || matchAmount || matchDoc;
     });
   }
 
   if (visibleRowCount) visibleRowCount.textContent = records.length;
-  const sumCreditVisible = records.reduce((acc, r) => acc + r.amount, 0);
-  if (totalCreditAmount) totalCreditAmount.textContent = formatINR(sumCreditVisible);
+  const sumAmountVisible = records.reduce((acc, r) => acc + r.amount, 0);
+  if (totalCreditAmount) totalCreditAmount.textContent = formatINR(sumAmountVisible);
 
   creditTableBody.innerHTML = '';
 
@@ -793,12 +1108,14 @@ function renderCreditTable() {
       statusPillHtml = `<span class="status-pill status-pill-noted"><span class="status-dot-sm"></span> Noted</span>`;
     }
 
-    // Invoice Mapping Cell
+    // Mapping Cell (Invoice vs Vendor Bill)
     let mappingCellHtml = '';
     if (row.status === 'mapped') {
+      const docNo = row.mapping.billNo || row.mapping.invoiceNo;
+      const tagBadgeClass = isDebit ? 'mapped-tag-badge badge-bill' : 'mapped-tag-badge';
       mappingCellHtml = `
-        <div class="mapped-tag-badge">
-          <span>${escapeHtml(row.mapping.invoiceNo)}</span>
+        <div class="${tagBadgeClass}">
+          <span>${escapeHtml(docNo)}</span>
         </div>
       `;
     } else if (row.status === 'noted') {
@@ -806,9 +1123,10 @@ function renderCreditTable() {
         <span style="font-size: 11.5px; color: var(--amber-text); font-weight: 600;">Note: ${escapeHtml(row.mapping.noteText)}</span>
       `;
     } else {
+      const placeholder = isDebit ? 'Bill / Voucher #' : 'Invoice #';
       mappingCellHtml = `
         <div class="cell-input-mapping">
-          <input type="text" class="mapping-inv-input" placeholder="Invoice #" id="input-inv-${row.id}" autocomplete="off">
+          <input type="text" class="mapping-inv-input" placeholder="${placeholder}" id="input-inv-${row.id}" autocomplete="off">
           <ul class="suggestions-dropdown" id="dropdown-${row.id}" style="display: none;"></ul>
         </div>
       `;
@@ -827,7 +1145,7 @@ function renderCreditTable() {
         </div>
       </td>
       <td class="col-amount text-right">
-        <span class="amount-text">${formatINR(row.amount)}</span>
+        <span class="amount-text ${isDebit ? 'amount-debit' : ''}">${isDebit ? '- ' : ''}${formatINR(row.amount)}</span>
       </td>
       <td class="col-mapping">
         ${mappingCellHtml}
@@ -852,43 +1170,87 @@ function renderCreditTable() {
           dropdown.innerHTML = '';
           const term = (filterVal || '').trim().toLowerCase();
 
-          const matches = appInvoices.filter(b => {
-            if (!term) return true;
-            return b.invoiceNo.toLowerCase().includes(term) ||
-                   b.guestName.toLowerCase().includes(term);
-          }).slice(0, 6);
+          if (isDebit) {
+            // Debit Mode: Search Vendor Bills Catalog
+            const matches = appVendorBills.filter(b => {
+              if (!term) return true;
+              return b.billNo.toLowerCase().includes(term) ||
+                     b.vendorName.toLowerCase().includes(term) ||
+                     (b.category && b.category.toLowerCase().includes(term));
+            }).slice(0, 6);
 
-          if (matches.length === 0) {
-            dropdown.style.display = 'none';
-            return;
-          }
-
-          const header = document.createElement('li');
-          header.className = 'suggestion-header';
-          header.textContent = 'Available Invoices';
-          dropdown.appendChild(header);
-
-          matches.forEach(m => {
-            const item = document.createElement('li');
-            item.className = 'suggestion-item';
-            item.innerHTML = `
-              <div class="suggestion-item-top">
-                <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
-                <span class="suggestion-expected-amount">${formatINR(m.amount)}</span>
-              </div>
-              <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
-            `;
-
-            const handleSelect = (e) => {
-              e.preventDefault();
+            if (matches.length === 0) {
               dropdown.style.display = 'none';
-              openInlineConfirmation(row, m.invoiceNo, m.guestName);
-            };
-            item.addEventListener('pointerdown', handleSelect);
-            item.addEventListener('mousedown', handleSelect);
+              return;
+            }
 
-            dropdown.appendChild(item);
-          });
+            const header = document.createElement('li');
+            header.className = 'suggestion-header';
+            header.textContent = 'Available Vendor Bills';
+            dropdown.appendChild(header);
+
+            matches.forEach(m => {
+              const item = document.createElement('li');
+              item.className = 'suggestion-item';
+              item.innerHTML = `
+                <div class="suggestion-item-top">
+                  <span class="suggestion-inv-num" style="color: #e11d48;">${escapeHtml(m.billNo)}</span>
+                  <span class="suggestion-expected-amount font-bold" style="color: #be123c;">${formatINR(m.amount)}</span>
+                </div>
+                <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
+              `;
+
+              const handleSelect = (e) => {
+                e.preventDefault();
+                dropdown.style.display = 'none';
+                openInlineConfirmation(row, m.billNo, m.vendorName);
+              };
+              item.addEventListener('pointerdown', handleSelect);
+              item.addEventListener('mousedown', handleSelect);
+
+              dropdown.appendChild(item);
+            });
+          } else {
+            // Credit Mode: Search Customer Invoices Catalog
+            const matches = appInvoices.filter(b => {
+              if (!term) return true;
+              return b.invoiceNo.toLowerCase().includes(term) ||
+                     b.guestName.toLowerCase().includes(term) ||
+                     (b.category && b.category.toLowerCase().includes(term));
+            }).slice(0, 6);
+
+            if (matches.length === 0) {
+              dropdown.style.display = 'none';
+              return;
+            }
+
+            const header = document.createElement('li');
+            header.className = 'suggestion-header';
+            header.textContent = 'Available Invoices';
+            dropdown.appendChild(header);
+
+            matches.forEach(m => {
+              const item = document.createElement('li');
+              item.className = 'suggestion-item';
+              item.innerHTML = `
+                <div class="suggestion-item-top">
+                  <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
+                  <span class="suggestion-expected-amount font-bold">${formatINR(m.amount)}</span>
+                </div>
+                <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
+              `;
+
+              const handleSelect = (e) => {
+                e.preventDefault();
+                dropdown.style.display = 'none';
+                openInlineConfirmation(row, m.invoiceNo, m.guestName);
+              };
+              item.addEventListener('pointerdown', handleSelect);
+              item.addEventListener('mousedown', handleSelect);
+
+              dropdown.appendChild(item);
+            });
+          }
 
           dropdown.style.display = 'block';
         }
@@ -903,8 +1265,13 @@ function renderCreditTable() {
           if (e.key === 'Enter') {
             const val = invInput.value.trim();
             if (val) {
-              const matched = appInvoices.find(b => b.invoiceNo.toLowerCase() === val.toLowerCase());
-              openInlineConfirmation(row, val, matched ? matched.guestName : null);
+              if (isDebit) {
+                const matched = appVendorBills.find(b => b.billNo.toLowerCase() === val.toLowerCase());
+                openInlineConfirmation(row, val, matched ? matched.vendorName : null);
+              } else {
+                const matched = appInvoices.find(b => b.invoiceNo.toLowerCase() === val.toLowerCase());
+                openInlineConfirmation(row, val, matched ? matched.guestName : null);
+              }
             }
           }
         });
@@ -926,11 +1293,22 @@ function renderCreditTable() {
     }
 
     // =========================================================================
-    // INLINE CONFIRMATION DRAWER (Matching Screenshot 2)
+    // INLINE CONFIRMATION DRAWER
     // =========================================================================
     if (isConfirming) {
       const confirmTr = document.createElement('tr');
       confirmTr.className = 'inline-confirm-row';
+
+      const docTypeLabel = isDebit ? 'vendor bill' : 'invoice';
+      const docHeaderLabel = isDebit ? 'Confirm vendor bill link' : 'Confirm invoice link';
+      const docSubLabel = isDebit
+        ? 'Review the evidence before this debit is locked to a vendor bill.'
+        : 'Review the evidence before this credit is locked to an invoice.';
+      const docFieldLabel = isDebit ? 'BILL / VOUCHER NUMBER' : 'INVOICE NUMBER';
+      const docSearchPlaceholder = isDebit ? '🔍 Search bill # or vendor' : '🔍 Search invoice or payer';
+      const amountFieldLabel = isDebit ? 'DEBIT AMOUNT' : 'CREDIT AMOUNT';
+      const payerLabel = isDebit ? 'Vendor / Payee' : 'Payer';
+      const submitBtnLabel = isDebit ? 'Link vendor bill' : 'Link invoice';
 
       confirmTr.innerHTML = `
         <td colspan="7">
@@ -941,18 +1319,18 @@ function renderCreditTable() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                <span>Confirm invoice link</span>
+                <span>${docHeaderLabel}</span>
               </div>
               <button type="button" class="confirm-close-btn" id="close-confirm-${row.id}">&times;</button>
             </div>
-            <p class="confirm-subtitle-text">Review the evidence before this credit is locked to an invoice.</p>
+            <p class="confirm-subtitle-text">${docSubLabel}</p>
 
             <!-- Data Fields Grid -->
             <div class="confirm-data-grid">
               <div class="confirm-data-field">
-                <label>INVOICE NUMBER</label>
+                <label>${docFieldLabel}</label>
                 <div class="confirm-inv-input-wrap">
-                  <input type="text" class="confirm-inv-search-input font-mono" id="confirm-inv-input-${row.id}" placeholder="🔍 Search invoice or payer" value="${escapeHtml(confirmingInvoiceNo)}">
+                  <input type="text" class="confirm-inv-search-input font-mono" id="confirm-inv-input-${row.id}" placeholder="${docSearchPlaceholder}" value="${escapeHtml(confirmingInvoiceNo)}">
                   <ul class="suggestions-dropdown" id="confirm-dropdown-${row.id}" style="display: none;"></ul>
                 </div>
               </div>
@@ -963,8 +1341,8 @@ function renderCreditTable() {
               </div>
 
               <div class="confirm-data-field">
-                <label>CREDIT AMOUNT</label>
-                <div class="confirm-field-val font-mono font-bold">${formatINR(row.amount)}</div>
+                <label>${amountFieldLabel}</label>
+                <div class="confirm-field-val font-mono font-bold ${isDebit ? 'text-danger' : ''}">${isDebit ? '- ' : ''}${formatINR(row.amount)}</div>
               </div>
             </div>
 
@@ -977,17 +1355,17 @@ function renderCreditTable() {
             <!-- Narration Box -->
             <div class="confirm-narration-banner">
               <span>Narration: <strong>${escapeHtml(row.narration)}</strong></span>
-              ${(confirmingGuestName || row.payer) ? `<span>Payer: <strong>${escapeHtml(confirmingGuestName || row.payer)}</strong></span>` : ''}
+              ${(confirmingGuestName || row.payer) ? `<span>${payerLabel}: <strong>${escapeHtml(confirmingGuestName || row.payer)}</strong></span>` : ''}
             </div>
 
             <!-- Action Buttons -->
             <div class="confirm-actions-toolbar">
               <button type="button" class="btn-confirm-cancel" id="cancel-confirm-${row.id}">Cancel</button>
-              <button type="button" class="btn-confirm-submit" id="submit-confirm-${row.id}">
+              <button type="button" class="btn-confirm-submit" id="submit-confirm-${row.id}" style="${isDebit ? 'background: #e11d48;' : ''}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                Link invoice
+                ${submitBtnLabel}
               </button>
             </div>
           </div>
@@ -1004,47 +1382,91 @@ function renderCreditTable() {
         drawerDropdown.innerHTML = '';
         const term = (filterVal || '').trim().toLowerCase();
 
-        const matches = appInvoices.filter(b => {
-          if (!term) return true;
-          return b.invoiceNo.toLowerCase().includes(term) ||
-                 b.guestName.toLowerCase().includes(term);
-        }).slice(0, 6);
+        if (isDebit) {
+          const matches = appVendorBills.filter(b => {
+            if (!term) return true;
+            return b.billNo.toLowerCase().includes(term) ||
+                   b.vendorName.toLowerCase().includes(term) ||
+                   (b.category && b.category.toLowerCase().includes(term));
+          }).slice(0, 6);
 
-        if (matches.length === 0) {
-          drawerDropdown.style.display = 'none';
-          return;
-        }
-
-        const header = document.createElement('li');
-        header.className = 'suggestion-header';
-        header.textContent = 'Select Customer Invoice';
-        drawerDropdown.appendChild(header);
-
-        matches.forEach(m => {
-          const item = document.createElement('li');
-          item.className = 'suggestion-item';
-          item.innerHTML = `
-            <div class="suggestion-item-top">
-              <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
-              <span class="suggestion-expected-amount">${formatINR(m.amount)}</span>
-            </div>
-            <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
-          `;
-
-          const handleDrawerSelect = (e) => {
-            e.preventDefault();
-            drawerInput.value = m.invoiceNo;
-            confirmingInvoiceNo = m.invoiceNo;
-            confirmingGuestName = m.guestName;
+          if (matches.length === 0) {
             drawerDropdown.style.display = 'none';
-            // Re-render drawer with updated payer name
-            renderCreditTable();
-          };
-          item.addEventListener('pointerdown', handleDrawerSelect);
-          item.addEventListener('mousedown', handleDrawerSelect);
+            return;
+          }
 
-          drawerDropdown.appendChild(item);
-        });
+          const header = document.createElement('li');
+          header.className = 'suggestion-header';
+          header.textContent = 'Select Vendor Bill';
+          drawerDropdown.appendChild(header);
+
+          matches.forEach(m => {
+            const item = document.createElement('li');
+            item.className = 'suggestion-item';
+            item.innerHTML = `
+              <div class="suggestion-item-top">
+                <span class="suggestion-inv-num" style="color: #e11d48;">${escapeHtml(m.billNo)}</span>
+                <span class="suggestion-expected-amount font-bold" style="color: #be123c;">${formatINR(m.amount)}</span>
+              </div>
+              <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
+            `;
+
+            const handleDrawerSelect = (e) => {
+              e.preventDefault();
+              drawerInput.value = m.billNo;
+              confirmingInvoiceNo = m.billNo;
+              confirmingGuestName = m.vendorName;
+              drawerDropdown.style.display = 'none';
+              renderCreditTable();
+            };
+            item.addEventListener('pointerdown', handleDrawerSelect);
+            item.addEventListener('mousedown', handleDrawerSelect);
+
+            drawerDropdown.appendChild(item);
+          });
+        } else {
+          const matches = appInvoices.filter(b => {
+            if (!term) return true;
+            return b.invoiceNo.toLowerCase().includes(term) ||
+                   b.guestName.toLowerCase().includes(term) ||
+                   (b.category && b.category.toLowerCase().includes(term));
+          }).slice(0, 6);
+
+          if (matches.length === 0) {
+            drawerDropdown.style.display = 'none';
+            return;
+          }
+
+          const header = document.createElement('li');
+          header.className = 'suggestion-header';
+          header.textContent = 'Select Customer Invoice';
+          drawerDropdown.appendChild(header);
+
+          matches.forEach(m => {
+            const item = document.createElement('li');
+            item.className = 'suggestion-item';
+            item.innerHTML = `
+              <div class="suggestion-item-top">
+                <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
+                <span class="suggestion-expected-amount font-bold">${formatINR(m.amount)}</span>
+              </div>
+              <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
+            `;
+
+            const handleDrawerSelect = (e) => {
+              e.preventDefault();
+              drawerInput.value = m.invoiceNo;
+              confirmingInvoiceNo = m.invoiceNo;
+              confirmingGuestName = m.guestName;
+              drawerDropdown.style.display = 'none';
+              renderCreditTable();
+            };
+            item.addEventListener('pointerdown', handleDrawerSelect);
+            item.addEventListener('mousedown', handleDrawerSelect);
+
+            drawerDropdown.appendChild(item);
+          });
+        }
 
         drawerDropdown.style.display = 'block';
       }
@@ -1060,13 +1482,13 @@ function renderCreditTable() {
 
       // Submit Confirm
       confirmTr.querySelector(`#submit-confirm-${row.id}`).addEventListener('click', () => {
-        const invNo = drawerInput.value.trim();
-        if (!invNo) {
-          showToast('Please specify an invoice number', 'amber');
+        const docNo = drawerInput.value.trim();
+        if (!docNo) {
+          showToast(`Please specify a ${docTypeLabel} number`, 'amber');
           drawerInput.focus();
           return;
         }
-        executeInvoiceLink(row, invNo, confirmingGuestName || row.payer);
+        executeInvoiceLink(row, docNo, confirmingGuestName || row.payer);
       });
 
       // Cancel / Close
@@ -1097,10 +1519,13 @@ function openInlineConfirmation(row, invoiceNo, guestName) {
 }
 
 function executeInvoiceLink(row, invoiceNo, guestName) {
+  const isDebit = activeMappingMode === 'debit' || (row.id && String(row.id).startsWith('DR-'));
   row.status = 'mapped';
   row.mapping = {
     invoiceNo: invoiceNo,
-    guestName: guestName || row.payer || 'Customer',
+    billNo: invoiceNo,
+    guestName: guestName || row.payer || (isDebit ? 'Vendor' : 'Customer'),
+    vendorName: guestName || row.payer || (isDebit ? 'Vendor' : 'Customer'),
     mappedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     mappedBy: 'Boss (Accounts Controller)',
     isNote: false
@@ -1109,7 +1534,7 @@ function executeInvoiceLink(row, invoiceNo, guestName) {
   // Record recent activity
   const bank = getActiveBank();
   recentActivities.unshift({
-    text: `Linked ${invoiceNo} (${guestName || 'Customer'})`,
+    text: `Linked ${isDebit ? 'Bill' : 'Invoice'} ${invoiceNo} (${guestName || (isDebit ? 'Vendor' : 'Customer')})`,
     meta: `${bank.name} ${bank.accNo} · Just now`
   });
 
@@ -1118,43 +1543,49 @@ function executeInvoiceLink(row, invoiceNo, guestName) {
   confirmingGuestName = '';
 
   renderAll();
-  showToast(`Successfully linked invoice ${invoiceNo} to ${row.date} credit!`);
+  showToast(`Successfully linked ${isDebit ? 'vendor bill' : 'invoice'} ${invoiceNo} to ${row.date} ${isDebit ? 'debit' : 'credit'}!`);
 }
 
 function triggerUnlinkModal(row) {
   pendingUnlinkTarget = row;
-  if (unlinkInvoiceNo) unlinkInvoiceNo.textContent = row.mapping ? row.mapping.invoiceNo : '—';
+  const docNo = row.mapping ? (row.mapping.billNo || row.mapping.invoiceNo) : '—';
+  if (unlinkInvoiceNo) unlinkInvoiceNo.textContent = docNo;
   if (unlinkModal) unlinkModal.style.display = 'flex';
 }
 
 function executeUnlink() {
   if (!pendingUnlinkTarget) return;
   const row = pendingUnlinkTarget;
-  const oldInv = row.mapping ? row.mapping.invoiceNo : '—';
+  const oldDoc = row.mapping ? (row.mapping.billNo || row.mapping.invoiceNo) : '—';
 
   row.status = 'unmapped';
   row.mapping = null;
 
   const bank = getActiveBank();
   recentActivities.unshift({
-    text: `Unlinked invoice ${oldInv}`,
+    text: `Unlinked ${oldDoc}`,
     meta: `${bank.name} ${bank.accNo} · Just now`
   });
 
   pendingUnlinkTarget = null;
   if (unlinkModal) unlinkModal.style.display = 'none';
   renderAll();
-  showToast(`Unlinked ${oldInv}. Credit is now open for review.`);
+  showToast(`Unlinked ${oldDoc}. Transaction is now open for review.`);
 }
 
 // =============================================================================
-// 8. Bank Statement CSV Upload with Strict Deduplication
+// 8. Bank Statement CSV Upload with Strict Deduplication (Credits & Debits)
 // =============================================================================
 
 function processBankStatementCsv(csvText) {
   const currentSheet = getCurrentSheet();
+  const isDebit = activeMappingMode === 'debit';
+  if (!currentSheet.records) currentSheet.records = [];
+  if (!currentSheet.debitRecords) currentSheet.debitRecords = [];
+
+  const targetList = isDebit ? currentSheet.debitRecords : currentSheet.records;
   const existingSet = new Set(
-    currentSheet.records.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
+    targetList.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
   );
 
   const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -1182,11 +1613,11 @@ function processBankStatementCsv(csvText) {
     } else {
       existingSet.add(key);
       added++;
-      currentSheet.records.unshift({
-        id: `CR-IMP-${Date.now()}-${added}`,
+      targetList.unshift({
+        id: `${isDebit ? 'DR' : 'CR'}-IMP-${Date.now()}-${added}`,
         date: date,
         narration: narration,
-        payer: cols[5] || '',
+        payer: cols[5] || (isDebit ? 'Vendor' : ''),
         type: type,
         bankRef: ref,
         amount: amount,
@@ -1198,16 +1629,16 @@ function processBankStatementCsv(csvText) {
 
   const bank = getActiveBank();
   recentActivities.unshift({
-    text: `Imported statement (${added} credits added)`,
+    text: `Imported statement (${added} ${isDebit ? 'debits' : 'credits'} added)`,
     meta: `${bank.name} ${bank.accNo} · Just now`
   });
 
   renderAll();
-  showToast(`Statement CSV processed: ${added} added, ${skipped} duplicates safely skipped!`);
+  showToast(`${isDebit ? 'Debit' : 'Credit'} statement CSV processed: ${added} added, ${skipped} duplicates safely skipped!`);
 }
 
 // =============================================================================
-// 9. Invoices Catalog & CSV Upload
+// 9. Invoices & Vendor Bills Catalogs & CSV Uploads
 // =============================================================================
 
 function renderInvoicesCatalogModal() {
@@ -1219,7 +1650,7 @@ function renderInvoicesCatalogModal() {
     if (!q) return true;
     return inv.invoiceNo.toLowerCase().includes(q) ||
            inv.guestName.toLowerCase().includes(q) ||
-           inv.category.toLowerCase().includes(q);
+           (inv.category && inv.category.toLowerCase().includes(q));
   });
 
   filtered.forEach(inv => {
@@ -1269,6 +1700,65 @@ function processInvoiceCsv(csvText) {
   showToast(`Imported ${added} customer invoices from CSV!`);
 }
 
+function renderVendorBillsCatalogModal() {
+  if (!catalogBillsTableBody) return;
+  catalogBillsTableBody.innerHTML = '';
+
+  const q = (billCatalogSearch ? billCatalogSearch.value : '').toLowerCase().trim();
+  const filtered = appVendorBills.filter(bill => {
+    if (!q) return true;
+    return bill.billNo.toLowerCase().includes(q) ||
+           bill.vendorName.toLowerCase().includes(q) ||
+           (bill.category && bill.category.toLowerCase().includes(q));
+  });
+
+  filtered.forEach(bill => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong class="font-mono" style="color: #be123c;">${escapeHtml(bill.billNo)}</strong></td>
+      <td>${escapeHtml(bill.vendorName)}</td>
+      <td class="font-bold" style="color: #be123c;">${formatINR(bill.amount)}</td>
+      <td>${escapeHtml(bill.date || '—')}</td>
+      <td><span class="text-muted">${escapeHtml(bill.category || '—')}</span></td>
+    `;
+    catalogBillsTableBody.appendChild(tr);
+  });
+}
+
+function processVendorBillCsv(csvText) {
+  const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    showToast('CSV file is empty or missing data rows', 'amber');
+    return;
+  }
+
+  let added = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+    if (cols.length < 3) continue;
+
+    const billNo = cols[0];
+    const vendor = cols[1];
+    const amount = parseFloat(cols[2]) || 0;
+    const date = cols[3] || '18 Sep 2026';
+    const category = cols[4] || 'Operating Expense';
+
+    if (!appVendorBills.some(b => b.billNo.toLowerCase() === billNo.toLowerCase())) {
+      appVendorBills.unshift({
+        billNo,
+        vendorName: vendor,
+        amount,
+        date,
+        category
+      });
+      added++;
+    }
+  }
+
+  renderAll();
+  showToast(`Imported ${added} vendor bills from CSV!`);
+}
+
 // =============================================================================
 // 10. Dashboard & Audit Trail Renderers
 // =============================================================================
@@ -1280,11 +1770,12 @@ function renderDashboardView() {
   if (dashBankList) {
     dashBankList.innerHTML = '';
     corporateBanks.forEach(b => {
-      const activeSheet = b.sheets[0] || { records: [] };
-      const totalInflow = activeSheet.records.reduce((acc, r) => acc + r.amount, 0);
-      const mapped = activeSheet.records.filter(r => r.status === 'mapped').length;
-      const total = activeSheet.records.length;
-      const pct = total > 0 ? Math.round((mapped / total) * 100) : 0;
+      const activeSheet = b.sheets[0] || { records: [], debitRecords: [] };
+      const totalInflow = (activeSheet.records || []).reduce((acc, r) => acc + r.amount, 0);
+      const totalOutflow = (activeSheet.debitRecords || []).reduce((acc, r) => acc + r.amount, 0);
+      const mappedCredits = (activeSheet.records || []).filter(r => r.status === 'mapped').length;
+      const totalCredits = (activeSheet.records || []).length;
+      const pct = totalCredits > 0 ? Math.round((mappedCredits / totalCredits) * 100) : 0;
 
       const row = document.createElement('div');
       row.className = 'bank-account-summary-row';
@@ -1294,8 +1785,8 @@ function renderDashboardView() {
           <div style="font-size: 11.5px; color: var(--text-muted);">${escapeHtml(b.type)} · ${escapeHtml(b.accNo)}</div>
         </div>
         <div style="text-align: right;">
-          <div style="font-weight: 700; font-size: 14px;">${formatINR(totalInflow)}</div>
-          <div style="font-size: 11px; color: #059669; font-weight: 600;">${pct}% Reconciled (${mapped}/${total})</div>
+          <div style="font-weight: 700; font-size: 14px;">In: ${formatINR(totalInflow)} <span style="color: #be123c; font-size: 12px; font-weight: 600;">| Out: ${formatINR(totalOutflow)}</span></div>
+          <div style="font-size: 11px; color: #059669; font-weight: 600;">${pct}% Credits Reconciled (${mappedCredits}/${totalCredits})</div>
         </div>
       `;
       dashBankList.appendChild(row);
@@ -1344,13 +1835,17 @@ function renderCommandPaletteResults(term) {
   const q = (term || '').toLowerCase().trim();
 
   const actions = [
+    { title: 'Switch to Debit Mapping Desk', desc: 'Match outgoing debits to vendor bills', action: () => { switchView('bank-statements'); switchMappingMode('debit'); } },
+    { title: 'Switch to Credit Mapping Desk', desc: 'Match incoming credits to sales invoices', action: () => { switchView('bank-statements'); switchMappingMode('credit'); } },
     { title: 'View Bank Statements', desc: 'Jump to reconciliation workspace', action: () => switchView('bank-statements') },
     { title: 'View Financial Dashboard', desc: 'Jump to executive analytics', action: () => switchView('dashboard') },
     { title: 'Switch Bank: Canara Bank', desc: 'Account ••4092', action: () => switchBank('canara-4092') },
     { title: 'Switch Bank: HDFC Bank', desc: 'Account ••1930', action: () => switchBank('hdfc-1930') },
     { title: 'Switch Bank: State Bank of India', desc: 'Account ••8814', action: () => switchBank('sbi-8814') },
-    { title: 'Add Invoice Manually', desc: 'Create new pending customer invoice', action: () => { if (openAddInvoiceModalBtn) openAddInvoiceModalBtn.click(); } },
-    { title: 'View Invoices Catalog', desc: 'Inspect available invoice records', action: () => { if (viewInvoicesBtn) viewInvoicesBtn.click(); } }
+    { title: 'Add Invoice Manually', desc: 'Create new pending customer sales invoice', action: () => { if (openAddInvoiceModalBtn) openAddInvoiceModalBtn.click(); } },
+    { title: 'Add Vendor Bill Manually', desc: 'Create new pending supplier purchase bill', action: () => { if (openAddBillModalBtn) openAddBillModalBtn.click(); } },
+    { title: 'View Invoices Catalog', desc: 'Inspect available customer invoice records', action: () => { if (viewInvoicesBtn) viewInvoicesBtn.click(); } },
+    { title: 'View Vendor Bills Catalog', desc: 'Inspect available vendor bills & expenses', action: () => { if (viewBillsBtn) viewBillsBtn.click(); } }
   ];
 
   const matched = actions.filter(a => !q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q));
@@ -1374,7 +1869,7 @@ function renderCommandPaletteResults(term) {
 }
 
 // =============================================================================
-// 12. Dynamic 6-Month Credit Trend Bar Chart
+// 12. Dynamic 6-Month Trend Bar Chart (Mode-Aware Credits & Debits)
 // =============================================================================
 
 const TREND_MONTHS = [
@@ -1391,21 +1886,26 @@ function renderCreditTrendChart() {
   miniBarChart.innerHTML = '';
 
   const bank = getActiveBank();
+  const isDebit = activeMappingMode === 'debit';
 
-  // Compute live monthly volumes for active bank
+  // Compute live monthly volumes for active bank and active mode
   const data = TREND_MONTHS.map(m => {
     const sheet = bank.sheets ? bank.sheets.find(s => s.monthId === m.monthId) : null;
     let total = 0;
     let count = 0;
-    if (sheet && sheet.records && sheet.records.length > 0) {
-      total = sheet.records.reduce((acc, r) => acc + r.amount, 0);
-      count = sheet.records.length;
-    } else if (sheet) {
-      total = (sheet.creditsCount || m.credits) * 22000;
-      count = sheet.creditsCount || m.credits;
+    if (sheet) {
+      const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
+      if (records.length > 0) {
+        total = records.reduce((acc, r) => acc + r.amount, 0);
+        count = records.length;
+      } else {
+        const estCount = isDebit ? (sheet.debitsCount || Math.round(m.credits * 0.6)) : (sheet.creditsCount || m.credits);
+        total = estCount * (isDebit ? 16500 : 22000);
+        count = estCount;
+      }
     } else {
-      total = m.defaultInflow;
-      count = m.credits;
+      total = isDebit ? Math.round(m.defaultInflow * 0.6) : m.defaultInflow;
+      count = isDebit ? Math.round(m.credits * 0.6) : m.credits;
     }
     return {
       ...m,
@@ -1422,10 +1922,10 @@ function renderCreditTrendChart() {
 
     const col = document.createElement('div');
     col.className = `chart-col ${isCurrent ? 'active' : ''}`;
-    col.title = `${d.label}: ${formatINR(d.total)} (${d.count} transactions) · Click to view`;
+    col.title = `${d.label} (${isDebit ? 'Debits' : 'Credits'}): ${formatINR(d.total)} (${d.count} transactions) · Click to view`;
 
     col.innerHTML = `
-      <div class="chart-bar ${isCurrent ? 'bar-active' : ''}" style="height: ${heightPct}%;"></div>
+      <div class="chart-bar ${isCurrent ? 'bar-active' : ''}" style="height: ${heightPct}%; ${isDebit && isCurrent ? 'background: #e11d48;' : ''}"></div>
       <span class="chart-label ${isCurrent ? 'label-active' : ''}">${d.shortName}</span>
     `;
 
@@ -1450,23 +1950,19 @@ function renderCreditTrendChart() {
               amount: Math.round(d.total * 0.6),
               status: 'unmapped',
               mapping: null
-            },
+            }
+          ],
+          debitRecords: [
             {
-              id: `CR-${d.monthId}-02`,
-              date: `12 ${d.shortName} 2026`,
-              narration: `NEFT-CR-AXISP00291-ANNUAL VACCINE TENDER`,
-              payer: 'Apollo Hospitals Group',
+              id: `DR-${d.monthId}-01`,
+              date: `17 ${d.shortName} 2026`,
+              narration: `NEFT/DR-SUPPLIES-${d.shortName.toUpperCase()}`,
+              payer: 'Bharat Chemical Synthetics Ltd',
               type: 'NEFT',
-              bankRef: `NEFT-${d.monthId}-02`,
-              amount: Math.round(d.total * 0.4),
-              status: 'mapped',
-              mapping: {
-                invoiceNo: `INV-${d.shortName.toUpperCase()}-041`,
-                guestName: 'Apollo Hospitals Group',
-                mappedAt: `12 ${d.shortName} 2026`,
-                mappedBy: 'Boss (Accounts Controller)',
-                isNote: false
-              }
+              bankRef: `NEFT-${d.monthId}-DR01`,
+              amount: Math.round(d.total * 0.5),
+              status: 'unmapped',
+              mapping: null
             }
           ]
         };
@@ -1493,10 +1989,11 @@ function renderAll() {
   renderCreditTable();
   renderCreditTrendChart();
   if (totalInvoicesCountBadge) totalInvoicesCountBadge.textContent = `${appInvoices.length} Invoices`;
+  if (totalBillsCountBadge) totalBillsCountBadge.textContent = `${appVendorBills.length} Vendor Bills`;
 }
 
 // =============================================================================
-// 13. Event Listeners & Binding
+// 14. Event Listeners & Binding
 // =============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1504,7 +2001,46 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navDashboard) navDashboard.addEventListener('click', () => switchView('dashboard'));
   if (navBankStatements) navBankStatements.addEventListener('click', () => switchView('bank-statements'));
 
-  // 2. Bank Selector Dropdown
+  // 2. Desk Mode Switcher Tabs (Credits vs Debits)
+  const handleTabSwitch = (mode) => {
+    switchMappingMode(mode);
+  };
+
+  if (tabCreditMode) {
+    tabCreditMode.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleTabSwitch('credit');
+    });
+  }
+  if (tabDebitMode) {
+    tabDebitMode.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleTabSwitch('debit');
+    });
+  }
+
+  // Keyboard accessibility for desk switcher tabs
+  [tabCreditMode, tabDebitMode].forEach(btn => {
+    if (btn) {
+      btn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleTabSwitch(btn.dataset.mode || (btn.id === 'tabDebitMode' ? 'debit' : 'credit'));
+        }
+      });
+    }
+  });
+
+  // Global delegated click listener for desk switcher tabs
+  document.addEventListener('click', (e) => {
+    const tabBtn = e.target.closest('#tabCreditMode, #tabDebitMode, .desk-tab-btn');
+    if (tabBtn && tabBtn.dataset && tabBtn.dataset.mode) {
+      e.preventDefault();
+      handleTabSwitch(tabBtn.dataset.mode);
+    }
+  });
+
+  // 3. Bank Selector Dropdown
   if (bankSelectorBtn) {
     bankSelectorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1522,7 +2058,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 3. Filter Popover
+  // 4. Filter Popover
   if (filterDropdownBtn) {
     filterDropdownBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1545,7 +2081,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (filterUnmapped) filterUnmapped.addEventListener('click', () => setFilter('unmapped', 'Pending'));
   if (filterMapped) filterMapped.addEventListener('click', () => setFilter('mapped', 'Reconciled'));
 
-  // 4. Search Filter
+  // 5. Search Filter
   if (tableSearchInput) {
     tableSearchInput.addEventListener('input', () => {
       searchQuery = tableSearchInput.value;
@@ -1553,7 +2089,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. Statement CSV Upload & Dropzone
+  // 6. Statement CSV Upload & Dropzone
   if (uploadCsvBtn && bankCsvInput) {
     uploadCsvBtn.addEventListener('click', () => bankCsvInput.click());
   }
@@ -1589,7 +2125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Manual Invoice Creation Modal
+  // 7. Manual Customer Invoice Modal
   if (openAddInvoiceModalBtn) {
     openAddInvoiceModalBtn.addEventListener('click', () => {
       if (addInvoiceModal) addInvoiceModal.style.display = 'flex';
@@ -1628,7 +2164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. Invoice CSV Upload
+  // 8. Invoice CSV Upload
   if (openUploadInvoiceCsvBtn && invoiceCsvInput) {
     openUploadInvoiceCsvBtn.addEventListener('click', () => invoiceCsvInput.click());
   }
@@ -1645,7 +2181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Invoices Catalog Modal
+  // 9. Invoices Catalog Modal
   if (viewInvoicesBtn) {
     viewInvoicesBtn.addEventListener('click', () => {
       if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'flex';
@@ -1664,8 +2200,83 @@ document.addEventListener('DOMContentLoaded', () => {
   if (doneInvoicesCatalogBtn) doneInvoicesCatalogBtn.addEventListener('click', closeCatModal);
   if (invoiceCatalogSearch) invoiceCatalogSearch.addEventListener('input', renderInvoicesCatalogModal);
 
+  // 10. Manual Vendor Bill Modal
+  if (openAddBillModalBtn) {
+    openAddBillModalBtn.addEventListener('click', () => {
+      if (addBillModal) addBillModal.style.display = 'flex';
+      const billInput = document.getElementById('newBillNo');
+      if (billInput) billInput.focus();
+    });
+  }
+
+  const closeBillModal = () => { if (addBillModal) addBillModal.style.display = 'none'; };
+  if (closeAddBillModalBtn) closeAddBillModalBtn.addEventListener('click', closeBillModal);
+  if (cancelAddBillBtn) cancelAddBillBtn.addEventListener('click', closeBillModal);
+
+  if (addBillForm) {
+    addBillForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const no = document.getElementById('newBillNo').value.trim();
+      const amt = parseFloat(document.getElementById('newBillAmount').value) || 0;
+      const vendor = document.getElementById('newBillVendor').value.trim();
+      const dt = document.getElementById('newBillDate').value.trim() || '18 Sep 2026';
+      const cat = document.getElementById('newBillCategory').value.trim() || 'Operational Expense';
+
+      if (!no || !amt || !vendor) return;
+
+      appVendorBills.unshift({
+        billNo: no,
+        vendorName: vendor,
+        amount: amt,
+        date: dt,
+        category: cat
+      });
+
+      addBillForm.reset();
+      closeBillModal();
+      renderAll();
+      showToast(`Vendor bill ${no} (${vendor}) registered successfully!`);
+    });
+  }
+
+  // 11. Vendor Bills CSV Upload
+  if (openUploadBillCsvBtn && billCsvInput) {
+    openUploadBillCsvBtn.addEventListener('click', () => billCsvInput.click());
+  }
+
+  if (billCsvInput) {
+    billCsvInput.addEventListener('change', () => {
+      if (billCsvInput.files.length > 0) {
+        const file = billCsvInput.files[0];
+        const reader = new FileReader();
+        reader.onload = () => processVendorBillCsv(reader.result);
+        reader.readAsText(file);
+        billCsvInput.value = '';
+      }
+    });
+  }
+
+  // 12. Vendor Bills Catalog Modal
+  if (viewBillsBtn) {
+    viewBillsBtn.addEventListener('click', () => {
+      if (billsCatalogModal) billsCatalogModal.style.display = 'flex';
+      renderVendorBillsCatalogModal();
+    });
+  }
+
+  const closeBillsCatModal = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (billsCatalogModal) billsCatalogModal.style.display = 'none';
+  };
+  if (closeBillsCatalogBtn) closeBillsCatalogBtn.addEventListener('click', closeBillsCatModal);
+  if (doneBillsCatalogBtn) doneBillsCatalogBtn.addEventListener('click', closeBillsCatModal);
+  if (billCatalogSearch) billCatalogSearch.addEventListener('input', renderVendorBillsCatalogModal);
+
   // Universal Modal Backdrop Click to Close (Never get trapped)
-  [addInvoiceModal, addBankModal, invoicesCatalogModal, unlinkModal, commandPaletteModal].forEach(modal => {
+  [addInvoiceModal, addBillModal, addBankModal, invoicesCatalogModal, billsCatalogModal, unlinkModal, commandPaletteModal].forEach(modal => {
     if (modal) {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -1675,7 +2286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 9. Add Bank Account Modal
+  // 13. Add Bank Account Modal
   const openBankModal = () => {
     if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
     if (addBankModal) addBankModal.style.display = 'flex';
@@ -1714,7 +2325,8 @@ document.addEventListener('DOMContentLoaded', () => {
             uploadedOn: '19 Sept 2026',
             creditsCount: 0,
             debitsCount: 0,
-            records: []
+            records: [],
+            debitRecords: []
           }
         ]
       });
@@ -1726,12 +2338,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 10. Unlink Dialog
+  // 14. Unlink Dialog
   if (closeUnlinkModalBtn) closeUnlinkModalBtn.addEventListener('click', () => { if (unlinkModal) unlinkModal.style.display = 'none'; });
   if (cancelUnlinkBtn) cancelUnlinkBtn.addEventListener('click', () => { if (unlinkModal) unlinkModal.style.display = 'none'; });
   if (confirmUnlinkBtn) confirmUnlinkBtn.addEventListener('click', executeUnlink);
 
-  // 11. Command Palette Trigger & Keyboard Shortcut
+  // 15. Command Palette Trigger & Keyboard Shortcut
   if (globalSearchTrigger) globalSearchTrigger.addEventListener('click', openCommandPalette);
 
   document.addEventListener('keydown', (e) => {
@@ -1742,8 +2354,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') {
       closeCommandPalette();
       if (addInvoiceModal) addInvoiceModal.style.display = 'none';
+      if (addBillModal) addBillModal.style.display = 'none';
       if (addBankModal) addBankModal.style.display = 'none';
       if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'none';
+      if (billsCatalogModal) billsCatalogModal.style.display = 'none';
       if (unlinkModal) unlinkModal.style.display = 'none';
     }
   });
@@ -1754,31 +2368,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 12. Export Reconciled CSV
+  // 16. Mode-Aware Export Reconciled CSV
   if (exportCurrentMonthBtn) {
     exportCurrentMonthBtn.addEventListener('click', () => {
       const sheet = getCurrentSheet();
-      const mapped = sheet.records.filter(r => r.status === 'mapped');
+      const isDebit = activeMappingMode === 'debit';
+      const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
+      const mapped = records.filter(r => r.status === 'mapped');
       if (mapped.length === 0) {
-        showToast('No reconciled records to export for this month', 'amber');
+        showToast(`No reconciled ${isDebit ? 'debits' : 'credits'} to export for this month`, 'amber');
         return;
       }
 
-      let csv = 'Date,Bank Reference,Credit Amount,Narration,Invoice No,Customer,Mapped By,Mapped At\n';
+      let csv = isDebit
+        ? 'Date,Bank Reference,Debit Amount,Narration,Bill No,Vendor / Payee,Mapped By,Mapped At\n'
+        : 'Date,Bank Reference,Credit Amount,Narration,Invoice No,Customer,Mapped By,Mapped At\n';
+
       mapped.forEach(r => {
-        csv += `"${r.date}","${r.bankRef}","${r.amount}","${r.narration.replace(/"/g, '""')}","${r.mapping.invoiceNo}","${(r.mapping.guestName || '').replace(/"/g, '""')}","${r.mapping.mappedBy}","${r.mapping.mappedAt}"\n`;
+        const docNo = r.mapping ? (r.mapping.billNo || r.mapping.invoiceNo || '') : '';
+        const party = r.mapping ? (r.mapping.vendorName || r.mapping.guestName || '') : '';
+        csv += `"${r.date}","${r.bankRef}","${r.amount}","${(r.narration || '').replace(/"/g, '""')}","${docNo}","${party.replace(/"/g, '""')}","${r.mapping.mappedBy}","${r.mapping.mappedAt}"\n`;
       });
 
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Reconciled_${sheet.label.replace(/\s+/g, '_')}.csv`;
+      link.download = `Reconciled_${isDebit ? 'Debits' : 'Credits'}_${sheet.label.replace(/\s+/g, '_')}.csv`;
       link.click();
-      showToast(`Exported ${mapped.length} reconciled records to CSV!`);
+      showToast(`Exported ${mapped.length} reconciled ${isDebit ? 'debits' : 'credits'} to CSV!`);
     });
   }
 
-  // 13. Mobile Sidebar Drawer Toggle
+  // 17. Mobile Sidebar Drawer Toggle
   const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');
   const appSidebar = document.querySelector('.app-sidebar');
   const sidebarBackdrop = document.getElementById('sidebarBackdrop');
@@ -1801,3 +2422,4 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial Boot
   renderAll();
 });
+

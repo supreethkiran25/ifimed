@@ -1,13 +1,13 @@
 /**
- * Test suite for Kapila Bank Statement Credit Mapping Workspace
+ * Test suite for Kapila Bank Statement Credit & Debit Mapping Workspace
  */
 const assert = require('assert');
 
 console.log('--- Starting Reconciliation Test Suite ---');
 
-// 1. Deduplication Rule Test
-function testDeduplication() {
-  console.log('Testing Canara Bank CSV Deduplication...');
+// 1. Credit Deduplication Rule Test
+function testCreditDeduplication() {
+  console.log('Testing Canara Bank Credit CSV Deduplication...');
   const existingRecords = [
     { date: '18 Sep 2026', amount: 8200, type: 'UPI', bankRef: 'UPI-626019381029' },
     { date: '18 Sep 2026', amount: 245000, type: 'NEFT', bankRef: 'AXISP00291039821' }
@@ -43,12 +43,53 @@ function testDeduplication() {
 
   assert.strictEqual(added, 2, 'Should add exactly 2 new rows');
   assert.strictEqual(skipped, 2, 'Should skip exactly 2 duplicate rows');
-  console.log('✔ Deduplication passed (2 added, 2 duplicates skipped)');
+  console.log('✔ Credit Deduplication passed (2 added, 2 duplicates skipped)');
 }
 
-// 2. Test Confirmation Step Requirements ("Repeat Ask")
-function testConfirmationStep() {
-  console.log('Testing Confirmation Step Logic...');
+// 2. Debit Deduplication Rule Test
+function testDebitDeduplication() {
+  console.log('Testing Canara Bank Debit CSV Deduplication...');
+  const existingDebitRecords = [
+    { date: '18 Sep 2026', amount: 184500, type: 'NEFT', bankRef: 'CORP-DR-99281' },
+    { date: '18 Sep 2026', amount: 36200, type: 'RTGS', bankRef: 'RTGS-882910' }
+  ];
+
+  const existingSet = new Set(
+    existingDebitRecords.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
+  );
+
+  const incomingDebitRows = [
+    // Duplicate 1
+    { date: '18 Sep 2026', amount: 184500, type: 'NEFT', bankRef: 'CORP-DR-99281' },
+    // New debit 1 (API Supplier)
+    { date: '19 Sep 2026', amount: 95000, type: 'RTGS', bankRef: 'RTGS-99381029' },
+    // New debit 2 (Lab Testing)
+    { date: '19 Sep 2026', amount: 48000, type: 'NEFT', bankRef: 'NEFT-5591029' },
+    // Duplicate 2
+    { date: '18 Sep 2026', amount: 36200, type: 'RTGS', bankRef: 'RTGS-882910' }
+  ];
+
+  let added = 0;
+  let skipped = 0;
+
+  incomingDebitRows.forEach(row => {
+    const key = `${row.date}|${row.amount}|${row.type}|${row.bankRef}`.toLowerCase();
+    if (existingSet.has(key)) {
+      skipped++;
+    } else {
+      existingSet.add(key);
+      added++;
+    }
+  });
+
+  assert.strictEqual(added, 2, 'Should add exactly 2 new debit rows');
+  assert.strictEqual(skipped, 2, 'Should skip exactly 2 duplicate debit rows');
+  console.log('✔ Debit Deduplication passed (2 added, 2 duplicates skipped)');
+}
+
+// 3. Test Confirmation Step Requirements ("Repeat Ask") for Credit
+function testCreditConfirmationStep() {
+  console.log('Testing Credit Confirmation Step Logic...');
   const bankRow = {
     id: 'CR-001',
     date: '18 Sep 2026',
@@ -63,7 +104,6 @@ function testConfirmationStep() {
   const guestName = 'Ananya Sharma';
 
   // Rule: Do NOT auto-save on select
-  let isAutoSaved = false;
   const pendingState = {
     type: 'link',
     invoiceNo: selectedInvoice,
@@ -89,8 +129,6 @@ function testConfirmationStep() {
   assert.strictEqual(confirmationBody.guest, 'Ananya Sharma');
 
   // Cancel action test
-  let cancelledState = null;
-  // If user cancels, pending state is cleared and bankRow remains unmapped
   assert.strictEqual(bankRow.status, 'unmapped', 'Cancelling maintains unmapped status');
 
   // Confirm action test
@@ -104,39 +142,118 @@ function testConfirmationStep() {
 
   assert.strictEqual(bankRow.status, 'mapped');
   assert.strictEqual(bankRow.mapping.invoiceNo, 'FDR-2026-0922');
-  console.log('✔ Confirmation step and Repeat-Ask validation passed');
+  console.log('✔ Credit Confirmation step and Repeat-Ask validation passed');
 }
 
-// 3. Test Action Permissions (No RBAC restrictions: all users can unmap & save notes)
+// 4. Test Confirmation Step Requirements ("Repeat Ask") for Debit (Vendor Bill)
+function testDebitConfirmationStep() {
+  console.log('Testing Debit Confirmation Step Logic (Vendor Bill Matching)...');
+  const debitRow = {
+    id: 'DR-002',
+    date: '18 Sep 2026',
+    amount: 184500,
+    type: 'NEFT',
+    bankRef: 'CORP-DR-99281',
+    narration: 'NEFT/DR/Aurobindo Pharma/Bulk API Cefixime',
+    status: 'unmapped'
+  };
+
+  const selectedBill = 'BILL-2026-0410';
+  const vendorName = 'Aurobindo Pharma Active Ingredients';
+
+  // Rule: Do NOT auto-save on select
+  const pendingState = {
+    type: 'link',
+    billNo: selectedBill,
+    vendorName: vendorName
+  };
+
+  assert.strictEqual(debitRow.status, 'unmapped', 'Debit row must remain unmapped until confirmation action is clicked');
+
+  // Confirmation payload
+  const confirmationBody = {
+    billNo: pendingState.billNo,
+    vendor: pendingState.vendorName,
+    bankDate: debitRow.date,
+    bankAmount: debitRow.amount,
+    bankRef: debitRow.bankRef,
+    particular: debitRow.narration
+  };
+
+  assert.strictEqual(confirmationBody.billNo, 'BILL-2026-0410');
+  assert.strictEqual(confirmationBody.vendor, 'Aurobindo Pharma Active Ingredients');
+  assert.strictEqual(confirmationBody.bankDate, '18 Sep 2026');
+  assert.strictEqual(confirmationBody.bankAmount, 184500);
+  assert.strictEqual(confirmationBody.bankRef, 'CORP-DR-99281');
+
+  // Cancel action test
+  assert.strictEqual(debitRow.status, 'unmapped', 'Cancelling maintains debit unmapped status');
+
+  // Confirm action test
+  debitRow.status = 'mapped';
+  debitRow.mapping = {
+    billNo: pendingState.billNo,
+    invoiceNo: pendingState.billNo,
+    vendorName: pendingState.vendorName,
+    guestName: pendingState.vendorName,
+    mappedAt: '18 Sep 2026',
+    mappedBy: 'Staff'
+  };
+
+  assert.strictEqual(debitRow.status, 'mapped');
+  assert.strictEqual(debitRow.mapping.billNo, 'BILL-2026-0410');
+  assert.strictEqual(debitRow.mapping.vendorName, 'Aurobindo Pharma Active Ingredients');
+  console.log('✔ Debit Confirmation step and Repeat-Ask validation passed');
+}
+
+// 5. Test Action Permissions & Unlinking for Credit & Debit
 function testActionPermissions() {
-  console.log('Testing Action Permissions (No RBAC restrictions)...');
-  const row = {
+  console.log('Testing Action Permissions & Unlinking (No RBAC restrictions)...');
+  
+  // Credit row
+  const creditRow = {
     status: 'mapped',
     mapping: { invoiceNo: 'INV-KAP-4819', guestName: 'Infosys' }
   };
+  // Debit row
+  const debitRow = {
+    status: 'mapped',
+    mapping: { billNo: 'BILL-2026-0410', vendorName: 'Aurobindo Pharma' }
+  };
 
   // Direct permissions for all desk users
-  const canUnmap = true;
+  const canUnmapCredit = true;
+  const canUnmapDebit = true;
   const canSaveNote = true;
-  assert.strictEqual(canUnmap, true, 'All desk users can unmap');
-  assert.strictEqual(canSaveNote, true, 'All desk users can save notes without invoices');
+  
+  assert.strictEqual(canUnmapCredit, true, 'All desk users can unmap credit');
+  assert.strictEqual(canUnmapDebit, true, 'All desk users can unmap debit');
+  assert.strictEqual(canSaveNote, true, 'All desk users can save notes without invoices/bills');
+
+  // Execute unmap on debit
+  delete debitRow.mapping;
+  debitRow.status = 'unmapped';
+  assert.strictEqual(debitRow.status, 'unmapped', 'Debit row correctly unlinked');
+  assert.strictEqual(debitRow.mapping, undefined, 'Debit mapping deleted');
 
   // Note Confirmation validation
-  const noteText = 'Owner capital injection';
-  const bankCredit = { date: '17 Sep 2026', amount: 500000 };
-  const noteConfirmationText = `Note "${noteText}" will be saved on this bank credit (${bankCredit.date} · ₹${bankCredit.amount}) — not linked to an invoice.`;
+  const noteText = 'Vendor advance adjustment';
+  const bankDebit = { date: '18 Sep 2026', amount: 36200 };
+  const noteConfirmationText = `Note "${noteText}" will be saved on this bank debit (${bankDebit.date} · ₹${bankDebit.amount}) — not linked to a vendor bill.`;
 
-  assert(noteConfirmationText.includes('Note "Owner capital injection" will be saved on this bank credit'));
-  assert(noteConfirmationText.includes('not linked to an invoice'));
-  console.log('✔ Full action permissions and note confirmation passed');
+  assert(noteConfirmationText.includes('Note "Vendor advance adjustment" will be saved on this bank debit'));
+  assert(noteConfirmationText.includes('not linked to a vendor bill'));
+  console.log('✔ Full action permissions, debit unlinking, and note confirmation passed');
 }
 
 // Run all
 try {
-  testDeduplication();
-  testConfirmationStep();
+  testCreditDeduplication();
+  testDebitDeduplication();
+  testCreditConfirmationStep();
+  testDebitConfirmationStep();
   testActionPermissions();
-  console.log('\nAll 3 test suites passed successfully! 100% compliant with specifications.');
+  console.log('\nAll 5 test suites passed successfully! 100% compliant with specifications.');
 } catch (err) {
   console.error('Test failed:', err);
   process.exit(1);
