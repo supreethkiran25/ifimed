@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node dev-server.js",
     "start": "node dev-server.js",
-    "build": "echo 'Static build complete'",
+    "build": "node build.js",
     "test": "node test_reconciliation.js"
   },
   "keywords": [

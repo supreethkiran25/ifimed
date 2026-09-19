@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bank Statements & Reconciliation Desk | IFIMED Pharmaceuticals</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Full-Width Top Corporate Header / Navbar (Matching Reference Screenshot) -->
+  <header class="top-navbar">
+    <div class="top-navbar-left">
+      <!-- Corporate Brand Logo -->
+      <div class="header-logo-wrap" title="IFIMED Pharmaceuticals Pvt. Ltd.">
+        <img src="ifimed-logo.jpg" alt="IFIMED Pharmaceuticals" class="header-logo">
+      </div>
+
+      <div class="header-v-divider"></div>
+
+      <!-- Breadcrumbs -->
+      <div class="top-breadcrumbs" id="topBreadcrumbs">
+        <span class="crumb-root">Accounts ERP</span>
+        <span class="crumb-separator">/</span>
+        <span class="crumb-active" id="currentCrumb">Bank statements</span>
+      </div>
+    </div>
+
+    <div class="top-navbar-right">
+      <!-- Global Command / Search Trigger -->
+      <div class="global-search-box" id="globalSearchTrigger" title="Press ⌘K or Ctrl+K to search workspace">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span class="search-placeholder-text">Reconciliation workspace</span>
+        <kbd class="search-kbd-badge">⌘ K</kbd>
+      </div>
+
+      <!-- Online Status Indicator Dot -->
+      <span class="online-indicator-dot" title="Treasury desk active"></span>
+
+      <!-- User Profile Avatar -->
+      <div class="user-profile-badge" title="Accounts Team · Corporate Controller">
+        <div class="user-avatar-circle">AK</div>
+        <div class="user-details-col">
+          <span class="user-display-name">Accounts Team</span>
+          <span class="user-org-name">IFIMED</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Workspace Shell (Sidebar + Content Below Top Navbar) -->
+  <div class="app-shell">
+    
+    <!-- Left Navigation Sidebar -->
+    <aside class="app-sidebar">
+      <!-- Navigation Links -->
+      <nav class="sidebar-nav">
+        <button type="button" class="sidebar-nav-item" data-view="dashboard" id="navDashboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+
+        <button type="button" class="sidebar-nav-item active" data-view="bank-statements" id="navBankStatements">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <span>Bank statements</span>
+        </button>
+
+      </nav>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="sidebar-version-brand">IFIMED ERP</div>
+        <div class="sidebar-version-num">v1.0.0</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content-scroll">
+      
+      <!-- ================================================================= -->
+      <!-- VIEW 1: BANK STATEMENTS (Primary Workspace)                       -->
+      <!-- ================================================================= -->
+      <section class="view-panel active" id="viewBankStatements">
+        
+        <!-- Page Header & Title Row (Matching Reference Screenshot) -->
+        <div class="page-title-row">
+          <div class="title-col">
+            <div class="page-breadcrumb-sub">Dashboard / Bank statements</div>
+            <h1 class="page-main-heading">Bank statements</h1>
+            <p class="page-main-subheading" id="pageBankSubheading">
+              Turn incoming Canara Bank credits into explicit invoice links.
+            </p>
+          </div>
+
+          <!-- Right: Bank Account Switcher Pill (Styled like 'Role Normal user' in reference) -->
+          <div class="bank-desk-pill-wrap">
+            <span class="bank-pill-label">Corporate Bank</span>
+            <div class="bank-selector-dropdown-wrap">
+              <button type="button" class="bank-selector-pill" id="bankSelectorBtn" title="Switch Corporate Bank Account" aria-haspopup="true" aria-expanded="false">
+                <span class="bank-dot"></span>
+                <span class="bank-active-name" id="activeBankName">Canara Bank Current A/c ••4092</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+
+              <!-- Bank Accounts Dropdown Menu -->
+              <div class="bank-dropdown-menu" id="bankDropdownMenu" style="display: none;">
+                <div class="dropdown-header">Select Corporate Bank Account</div>
+                <div class="bank-options-list" id="bankOptionsList">
+                  <!-- Populated dynamically by JS (3 Demo Accounts) -->
+                </div>
+                <div class="dropdown-divider"></div>
+                <button type="button" class="dropdown-action-btn" id="openAddBankModalBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>+ Add New Bank Account</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 KPI Summary Cards in a Grid -->
+        <div class="kpi-grid">
+          <!-- Card 1: Total Credits -->
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">TOTAL CREDITS · THIS MONTH</span>
+              <div class="kpi-icon-circle icon-circle-blue">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="7" y1="17" x2="17" y2="7"></line>
+                  <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount" id="kpiTotalAmount">₹ 33,83,500</div>
+              <div class="kpi-card-subtext"><span id="kpiTotalCount">86</span> bank transactions</div>
+            </div>
+          </div>
+
+          <!-- Card 2: Mapped Credits -->
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">MAPPED CREDITS</span>
+              <div class="kpi-icon-circle icon-circle-green">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount" id="kpiMappedAmount">₹ 18,42,300</div>
+              <div class="kpi-card-subtext"><span id="kpiMappedCount">24</span> transactions linked</div>
+            </div>
+          </div>
+
+          <!-- Card 3: Unmapped Credits -->
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">UNMAPPED CREDITS</span>
+              <div class="kpi-icon-circle icon-circle-amber">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount" id="kpiUnmappedAmount">₹ 15,41,200</div>
+              <div class="kpi-card-subtext"><span id="kpiUnmappedCount">62</span> transactions need review</div>
+            </div>
+          </div>
+
+          <!-- Card 4: Credit Trend with 6-Month Mini Bar Chart -->
+          <div class="kpi-card kpi-trend-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">CREDIT TREND</span>
+              <span class="trend-badge-sub">6 months</span>
+            </div>
+            <div class="kpi-trend-content">
+              <div class="mini-bar-chart" id="miniBarChart">
+                <div class="chart-col">
+                  <div class="chart-bar" style="height: 52%;" title="Apr 2026: ₹16.4L"></div>
+                  <span class="chart-label">Apr</span>
+                </div>
+                <div class="chart-col">
+                  <div class="chart-bar" style="height: 64%;" title="May 2026: ₹21.2L"></div>
+                  <span class="chart-label">May</span>
+                </div>
+                <div class="chart-col">
+                  <div class="chart-bar" style="height: 72%;" title="Jun 2026: ₹25.8L"></div>
+                  <span class="chart-label">Jun</span>
+                </div>
+                <div class="chart-col">
+                  <div class="chart-bar" style="height: 80%;" title="Jul 2026: ₹28.5L"></div>
+                  <span class="chart-label">Jul</span>
+                </div>
+                <div class="chart-col">
+                  <div class="chart-bar" style="height: 68%;" title="Aug 2026: ₹24.1L"></div>
+                  <span class="chart-label">Aug</span>
+                </div>
+                <div class="chart-col active">
+                  <div class="chart-bar bar-active" style="height: 94%;" title="Sep 2026: ₹33.8L"></div>
+                  <span class="chart-label label-active">Sep</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bank Statement Files Section Card (Matching Screenshot 1) -->
+        <div class="content-card statement-files-card">
+          <div class="card-header-bar">
+            <div class="card-header-titles">
+              <h2 class="card-title">Bank statement files</h2>
+              <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from Canara Bank</p>
+            </div>
+            <div class="card-header-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="uploadCsvBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload CSV</span>
+              </button>
+              <input type="file" id="bankCsvInput" accept=".csv,text/csv" class="hidden-input">
+            </div>
+          </div>
+
+          <div class="statement-files-layout">
+            <!-- Left Dropzone Area -->
+            <div class="files-dropzone-box" id="dropZone" title="Click or drop a bank statement CSV here">
+              <div class="dropzone-inner-content">
+                <div class="dropzone-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                </div>
+                <strong class="dropzone-cta-title">Upload CSV</strong>
+                <span class="dropzone-bank-hint" id="dropZoneBankName">Canara Bank CSV only</span>
+              </div>
+            </div>
+
+            <!-- Right Monthly Statements Table -->
+            <div class="files-table-wrapper">
+              <table class="files-table" id="statementFilesTable">
+                <thead>
+                  <tr>
+                    <th scope="col">MONTH · FILE NAME</th>
+                    <th scope="col">CREDITS</th>
+                    <th scope="col">DEBITS</th>
+                    <th scope="col">UPLOADED ON</th>
+                  </tr>
+                </thead>
+                <tbody id="statementFilesTableBody">
+                  <!-- Populated dynamically by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Credit Mapping Desk Section Card (Matching Screenshot 2) -->
+        <div class="content-card credit-mapping-card" id="mappingSection">
+          <div class="card-header-bar">
+            <div class="card-header-titles">
+              <div class="title-with-badge">
+                <h2 class="card-title">Credit mapping</h2>
+                <span class="records-pill-badge" id="mappedCountDisplay">86 records</span>
+              </div>
+              <p class="card-subtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
+            </div>
+
+            <div class="mapping-desk-toolbar">
+              <!-- Search narration or reference -->
+              <div class="search-input-wrapper">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="tableSearchInput" placeholder="Search narration or reference" class="table-search-box">
+              </div>
+
+              <!-- Filter Dropdown Button -->
+              <div class="filter-dropdown-container">
+                <button type="button" class="btn btn-filter" id="filterDropdownBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                  </svg>
+                  <span id="activeFilterLabel">Filter</span>
+                </button>
+
+                <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;">
+                  <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll">
+                    All Credits (<span id="countAll">0</span>)
+                  </button>
+                  <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped">
+                    Pending (<span id="countUnmapped">0</span>)
+                  </button>
+                  <button type="button" class="filter-menu-item" data-filter="mapped" id="filterMapped">
+                    Reconciled (<span id="countMapped">0</span>)
+                  </button>
+                </div>
+              </div>
+
+              <!-- Invoice Management Actions (Neatly integrated in mapping toolbar) -->
+              <button type="button" class="btn btn-white-border btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Add Invoice</span>
+              </button>
+
+              <button type="button" class="btn btn-white-border btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload Invoices</span>
+              </button>
+              <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
+
+              <button type="button" class="btn btn-ghost btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
+                <span class="invoice-count-pill" id="totalInvoicesCountBadge">15 Invoices</span>
+              </button>
+
+              <!-- Export Reconciled Action -->
+              <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- High Density Credit Mapping Table -->
+          <div class="table-container">
+            <table class="credit-mapping-table" id="creditTable" aria-label="Incoming Bank Credits">
+              <thead>
+                <tr>
+                  <th scope="col" class="th-date">DATE</th>
+                  <th scope="col" class="th-narration">PARTICULAR / NARRATION</th>
+                  <th scope="col" class="th-ref">BANK REFERENCE</th>
+                  <th scope="col" class="th-amount text-right">CREDIT AMOUNT</th>
+                  <th scope="col" class="th-mapping">INVOICE MAPPING</th>
+                  <th scope="col" class="th-status">STATUS</th>
+                  <th scope="col" class="th-actions text-center">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="creditTableBody">
+                <!-- Dynamically rendered rows by app.js -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State -->
+          <div class="table-empty-state" id="tableEmptyState" style="display: none;">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+            <h3>No matching credit records found</h3>
+            <p>Try refining your search query or switching your active filter.</p>
+          </div>
+
+          <!-- Table Footer Totals Bar -->
+          <div class="table-footer-bar">
+            <div class="footer-left-info">
+              <span>Showing <strong id="visibleRowCount">0</strong> transactions for <strong id="currentMonthLabel">September 2026</strong></span>
+              <span class="dot-sep">•</span>
+              <span class="footer-bank-detail" id="footerBankDetails">Canara Bank Current A/c ••4092</span>
+            </div>
+            <div class="footer-right-info">
+              <span class="subtotal-label">Subtotal Inflow:</span>
+              <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 0.00</span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 2: DASHBOARD (Treasury Analytics & Multi-Bank Overview)       -->
+      <!-- ================================================================= -->
+      <section class="view-panel" id="viewDashboard" style="display: none;">
+        <div class="page-title-row">
+          <div class="title-col">
+            <div class="page-breadcrumb-sub">Corporate Treasury / Overview</div>
+            <h1 class="page-main-heading">Financial Dashboard</h1>
+            <p class="page-main-subheading">
+              Multi-bank inflow monitoring, reconciliation throughput, and working capital telemetry.
+            </p>
+          </div>
+        </div>
+
+        <!-- Dashboard Metric Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">TOTAL CORPORATE INFLOW</span>
+              <div class="kpi-icon-circle icon-circle-blue">₹</div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount">₹ 78,42,800</div>
+              <div class="kpi-card-subtext">Across 3 corporate bank desks</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">AVERAGE RECONCILIATION RATE</span>
+              <div class="kpi-icon-circle icon-circle-green">✓</div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount">88.4%</div>
+              <div class="kpi-card-subtext">+12.6% efficiency vs last month</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">CUSTOMER INVOICES CATALOG</span>
+              <div class="kpi-icon-circle icon-circle-amber">📄</div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount" id="dashTotalInvoicesCount">15 Invoices</div>
+              <div class="kpi-card-subtext">Active ERP receivables queue</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-header-label">RECONCILIATION ACCURACY</span>
+              <div class="kpi-icon-circle icon-circle-cyan">✓</div>
+            </div>
+            <div class="kpi-card-body">
+              <div class="kpi-card-amount">100% Matching</div>
+              <div class="kpi-card-subtext">Strict Date & Ref verification</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-Bank Desk Status Grid -->
+        <div class="dashboard-cards-grid">
+          <div class="content-card">
+            <div class="card-header-bar">
+              <h2 class="card-title">Corporate Accounts Summary</h2>
+              <button type="button" class="btn btn-outline btn-sm" id="dashAddBankBtn">+ Add Account</button>
+            </div>
+            <div class="bank-accounts-dashboard-list" id="dashboardBankList">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <div class="content-card">
+            <div class="card-header-bar">
+              <h2 class="card-title">Recent Desk Activities</h2>
+              <span class="badge-pill">Live Feed</span>
+            </div>
+            <div class="activity-feed-list" id="dashboardActivityFeed">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+
+    </main>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODALS & OVERLAYS                                                     -->
+  <!-- ===================================================================== -->
+
+  <!-- Modal 1: Add Invoice Manually -->
+  <div class="modal-overlay" id="addInvoiceModal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Add Customer Invoice Manually</h3>
+            <p class="modal-subtitle">Add a single invoice to the pending invoice catalog for bank matching.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeAddInvoiceModalBtn">&times;</button>
+      </div>
+
+      <form id="addInvoiceForm" class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newInvNo" class="form-label">Invoice Number <span class="text-danger">*</span></label>
+            <input type="text" id="newInvNo" class="form-control font-mono" placeholder="e.g. INV-IFM-2026-042" required>
+          </div>
+          <div class="form-group">
+            <label for="newInvAmount" class="form-label">Invoice Amount (₹) <span class="text-danger">*</span></label>
+            <input type="number" id="newInvAmount" step="0.01" min="1" class="form-control font-mono" placeholder="e.g. 75000.00" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newInvCustomer" class="form-label">Customer / Buyer Name <span class="text-danger">*</span></label>
+          <input type="text" id="newInvCustomer" class="form-control" placeholder="e.g. Apollo Pharmacy Ltd / Manipal Hospitals" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newInvDate" class="form-label">Invoice Date</label>
+            <input type="text" id="newInvDate" class="form-control" placeholder="e.g. 19 Sep 2026">
+          </div>
+          <div class="form-group">
+            <label for="newInvCategory" class="form-label">Product / Batch / Category</label>
+            <input type="text" id="newInvCategory" class="form-control" placeholder="e.g. Antibiotics Batch #94">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="cancelAddInvoiceBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save & Add Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Add Corporate Bank Account -->
+  <div class="modal-overlay" id="addBankModal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2.5">
+              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+              <line x1="2" y1="10" x2="22" y2="10"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Add Corporate Bank Account</h3>
+            <p class="modal-subtitle">Register another corporate bank account for statement reconciliation.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeAddBankModalBtn">&times;</button>
+      </div>
+
+      <form id="addBankForm" class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newBankName" class="form-label">Bank Name <span class="text-danger">*</span></label>
+            <input type="text" id="newBankName" class="form-control" placeholder="e.g. Axis Bank / Kotak Mahindra" required>
+          </div>
+          <div class="form-group">
+            <label for="newBankType" class="form-label">Account Type</label>
+            <select id="newBankType" class="form-control">
+              <option value="Current A/c">Current A/c</option>
+              <option value="Cash Credit A/c">Cash Credit A/c</option>
+              <option value="Overdraft A/c">Overdraft A/c</option>
+              <option value="Savings A/c">Savings A/c</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newBankAccNo" class="form-label">Account Number <span class="text-danger">*</span></label>
+            <input type="text" id="newBankAccNo" class="form-control font-mono" placeholder="e.g. 918020048192031" required>
+          </div>
+          <div class="form-group">
+            <label for="newBankIfsc" class="form-label">IFSC Code</label>
+            <input type="text" id="newBankIfsc" class="form-control font-mono" placeholder="e.g. UTIB0000412">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="cancelAddBankBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Bank Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: View Invoices Catalog -->
+  <div class="modal-overlay" id="invoicesCatalogModal" style="display: none;">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Invoices Catalog Database</h3>
+            <p class="modal-subtitle">Customer invoices available for reconciliation across all bank statements.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeInvoicesCatalogBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-search-row">
+          <input type="text" id="invoiceCatalogSearch" class="form-control" placeholder="Search invoice #, customer name, or category...">
+        </div>
+        <div class="modal-table-wrap">
+          <table class="credit-mapping-table" id="catalogInvoicesTable">
+            <thead>
+              <tr>
+                <th>INVOICE #</th>
+                <th>CUSTOMER / BUYER</th>
+                <th>AMOUNT</th>
+                <th>DATE</th>
+                <th>CATEGORY</th>
+              </tr>
+            </thead>
+            <tbody id="catalogInvoicesTableBody">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="doneInvoicesCatalogBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Global Command Palette (⌘ K / Ctrl+K) -->
+  <div class="modal-overlay" id="commandPaletteModal" style="display: none;">
+    <div class="command-palette-dialog">
+      <div class="command-palette-search-bar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="commandPaletteInput" placeholder="Search transactions, switch banks, or jump to view..." autofocus>
+        <kbd class="kbd-badge">ESC</kbd>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <!-- Suggestions & jump options populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Unlink Confirmation Dialog -->
+  <div class="modal-overlay" id="unlinkModal" style="display: none;">
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <h3 class="modal-title text-danger">Unlink Transaction</h3>
+        <button type="button" class="modal-close-btn" id="closeUnlinkModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to unlink this credit from invoice <strong id="unlinkInvoiceNo">—</strong>?</p>
+        <p class="text-muted" style="font-size: 12.5px; margin-top: 8px;">The transaction will return to pending status and be available for re-mapping.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" id="cancelUnlinkBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmUnlinkBtn">Yes, Unlink</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Feedback Notification -->
+  <div class="toast-notification" id="toastNotification" role="alert" aria-live="polite">
+    <div class="toast-icon" id="toastIcon"></div>
+    <div class="toast-message" id="toastMessage">Action completed successfully</div>
+  </div>
+
+  <!-- Compatibility Hidden Containers for Tests and Helpers -->
+  <div id="monthlySheetList" style="display: none;"></div>
+  <div id="monthTabsContainer" style="display: none;"></div>
+  <span id="footerMonthLabel" style="display: none;">September 2026</span>
+  <span id="kpiBankLabel" style="display: none;">Canara Bank Inflow</span>
+  <span id="uploadBtnText" style="display: none;">Upload CSV</span>
+  <button type="button" id="downloadSampleCsvBtn" style="display: none;"></button>
+  <button type="button" id="clearDataBtn" style="display: none;"></button>
+  <span id="kpiProgressPercent" style="display: none;">0%</span>
+  <div id="progressBarFill" style="display: none;"></div>
+  <span id="kpiProgressSubtext" style="display: none;"></span>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
