@@ -878,11 +878,13 @@ function renderCreditTable() {
               <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
             `;
 
-            item.addEventListener('mousedown', (e) => {
+            const handleSelect = (e) => {
               e.preventDefault();
               dropdown.style.display = 'none';
               openInlineConfirmation(row, m.invoiceNo, m.guestName);
-            });
+            };
+            item.addEventListener('pointerdown', handleSelect);
+            item.addEventListener('mousedown', handleSelect);
 
             dropdown.appendChild(item);
           });
@@ -1028,7 +1030,7 @@ function renderCreditTable() {
             <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
           `;
 
-          item.addEventListener('mousedown', (e) => {
+          const handleDrawerSelect = (e) => {
             e.preventDefault();
             drawerInput.value = m.invoiceNo;
             confirmingInvoiceNo = m.invoiceNo;
@@ -1036,7 +1038,9 @@ function renderCreditTable() {
             drawerDropdown.style.display = 'none';
             // Re-render drawer with updated payer name
             renderCreditTable();
-          });
+          };
+          item.addEventListener('pointerdown', handleDrawerSelect);
+          item.addEventListener('mousedown', handleDrawerSelect);
 
           drawerDropdown.appendChild(item);
         });

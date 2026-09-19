@@ -1963,48 +1963,432 @@ body {
     min-width: 180px;
   }
 
-  /* Tables Fluid Scroll Containment */
+  /* =========================================================================
+     MOBILE CARDS UX FOR CREDIT MAPPING (Strictly Mobile <= 768px)
+     Transforms wide corporate data table into high-density touch-first cards
+     ========================================================================= */
   .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    width: 100%;
-    max-width: 100%;
-    border-radius: var(--radius-sm);
+    overflow-x: visible !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
   }
 
-  .credit-mapping-table {
-    min-width: 720px;
+  #creditTable {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none !important;
+    border-collapse: separate !important;
+    background: transparent !important;
   }
 
-  /* Inline Confirmation Drawer */
-  .inline-confirm-box {
-    margin: 8px 4px;
-    padding: 14px 12px;
+  #creditTable thead {
+    display: none !important;
   }
 
-  .confirm-data-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  #creditTable tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
   }
 
-  .confirm-narration-banner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+  /* Each transaction row becomes a standalone card */
+  #creditTable tr:not(.inline-confirm-row) {
+    display: grid !important;
+    grid-template-columns: 1fr auto auto !important;
+    grid-template-areas:
+      "date status actions"
+      "narration narration narration"
+      "ref amount amount"
+      "mapping mapping mapping" !important;
+    row-gap: 8px !important;
+    column-gap: 10px !important;
+    align-items: center !important;
+    background: #ffffff !important;
+    border: 1px solid var(--border-color, #e2e8f0) !important;
+    border-radius: 12px !important;
+    padding: 13px 14px 12px 14px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    position: relative !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
   }
 
-  .confirm-actions-toolbar {
-    flex-direction: column-reverse;
-    gap: 8px;
-    width: 100%;
+  #creditTable tr:not(.inline-confirm-row):hover {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
   }
 
-  .confirm-actions-toolbar .btn-confirm-cancel,
-  .confirm-actions-toolbar .btn-confirm-submit {
-    width: 100%;
-    justify-content: center;
-    text-align: center;
-    padding: 10px;
+  #creditTable tr.active-confirming-row {
+    border-color: #2563eb !important;
+    background: #f0f7ff !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-bottom: 1px dashed #93c5fd !important;
+    box-shadow: 0 4px 12px rgba(24, 119, 242, 0.1) !important;
+  }
+
+  /* Row Area: Date */
+  #creditTable tr:not(.inline-confirm-row) .col-date {
+    grid-area: date !important;
+    border: none !important;
+    padding: 0 !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    color: #64748b !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  /* Row Area: Status Pill */
+  #creditTable tr:not(.inline-confirm-row) .col-status {
+    grid-area: status !important;
+    border: none !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .status-pill {
+    padding: 3px 10px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 20px !important;
+  }
+
+  /* Row Area: Action Menu Button (···) */
+  #creditTable tr:not(.inline-confirm-row) .col-actions {
+    grid-area: actions !important;
+    border: none !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .btn-actions-menu {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 7px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+    cursor: pointer !important;
+    touch-action: manipulation !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .btn-actions-menu:active {
+    background: #e2e8f0 !important;
+  }
+
+  /* Row Area: Narration & Customer */
+  #creditTable tr:not(.inline-confirm-row) .col-narration {
+    grid-area: narration !important;
+    border: none !important;
+    padding: 4px 0 2px 0 !important;
+    display: block !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .narration-primary {
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    line-height: 1.4 !important;
+    word-break: break-word !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .narration-secondary {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #1877f2 !important;
+    margin-top: 3px !important;
+  }
+
+  /* Row Area: Reference Badges */
+  #creditTable tr:not(.inline-confirm-row) .col-ref {
+    grid-area: ref !important;
+    border: none !important;
+    padding: 2px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .badge-type {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    text-transform: uppercase !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .ref-code-text {
+    font-size: 11.5px !important;
+    font-family: var(--font-mono) !important;
+    color: #64748b !important;
+    word-break: break-all !important;
+  }
+
+  /* Row Area: Credit Amount */
+  #creditTable tr:not(.inline-confirm-row) .col-amount {
+    grid-area: amount !important;
+    border: none !important;
+    padding: 2px 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    text-align: right !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .amount-text {
+    font-size: 17px !important;
+    font-weight: 800 !important;
+    font-family: var(--font-mono) !important;
+    color: #0f172a !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  /* Row Area: Invoice Mapping Input / Linked Tag */
+  #creditTable tr:not(.inline-confirm-row) .col-mapping {
+    grid-area: mapping !important;
+    border: none !important;
+    padding: 10px 0 0 0 !important;
+    border-top: 1px dashed #e2e8f0 !important;
+    margin-top: 4px !important;
+    width: 100% !important;
+    position: relative !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .cell-input-mapping {
+    width: 100% !important;
+    max-width: 100% !important;
+    position: relative !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .mapping-inv-input {
+    width: 100% !important;
+    height: 40px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    box-sizing: border-box !important;
+    -webkit-appearance: none !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .mapping-inv-input:focus {
+    background: #ffffff !important;
+    border-color: #1877f2 !important;
+    box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.15) !important;
+    outline: none !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .suggestions-dropdown {
+    position: absolute !important;
+    top: calc(100% + 4px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    z-index: 1000 !important;
+    background: #ffffff !important;
+    border: 1px solid #93c5fd !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+    max-height: 250px !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .suggestion-item {
+    padding: 10px 12px !important;
+    min-height: 44px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    touch-action: manipulation !important;
+  }
+
+  #creditTable tr:not(.inline-confirm-row) .mapped-tag-badge {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 8px 12px !important;
+    background: #ecfdf5 !important;
+    border: 1px solid #a7f3d0 !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    color: #047857 !important;
+    font-weight: 600 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Inline Confirmation Drawer attached directly below card on Mobile */
+  #creditTable tr.inline-confirm-row {
+    display: block !important;
+    width: 100% !important;
+    margin-top: -12px !important;
+    margin-bottom: 12px !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #creditTable tr.inline-confirm-row > td {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  #creditTable .inline-confirm-box {
+    margin: 0 !important;
+    padding: 16px 14px !important;
+    border-radius: 0 0 12px 12px !important;
+    border: 2px solid #2563eb !important;
+    border-top: none !important;
+    background: #f8fbff !important;
+    box-shadow: 0 8px 20px rgba(24, 119, 242, 0.15) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  #creditTable .confirm-header-row {
+    margin-bottom: 8px !important;
+  }
+
+  #creditTable .confirm-subtitle-text {
+    font-size: 12px !important;
+    margin-bottom: 14px !important;
+  }
+
+  #creditTable .confirm-data-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  #creditTable .confirm-inv-search-input {
+    height: 42px !important;
+    font-size: 13.5px !important;
+    padding: 0 12px !important;
+  }
+
+  #creditTable .confirm-inv-input-wrap .suggestions-dropdown {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+
+  #creditTable .confirm-narration-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    margin-bottom: 14px !important;
+  }
+
+  #creditTable .confirm-actions-toolbar {
+    display: flex !important;
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  #creditTable .btn-confirm-cancel,
+  #creditTable .btn-confirm-submit {
+    width: 100% !important;
+    height: 44px !important;
+    justify-content: center !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    text-align: center !important;
+  }
+
+  /* Statement files table responsive list on mobile */
+  .files-table-wrapper {
+    overflow-x: visible !important;
+  }
+
+  .files-table {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .files-table thead {
+    display: none !important;
+  }
+
+  .files-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .statement-month-row {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-areas:
+      "name name"
+      "credits debits"
+      "date date" !important;
+    gap: 6px 12px !important;
+    padding: 12px 14px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 10px !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+  }
+
+  .statement-month-row td {
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .statement-month-row td:nth-child(1) {
+    grid-area: name !important;
+  }
+
+  .statement-month-row td:nth-child(2) {
+    grid-area: credits !important;
+    font-weight: 600 !important;
+    color: #047857 !important;
+    font-size: 12px !important;
+  }
+
+  .statement-month-row td:nth-child(3) {
+    grid-area: debits !important;
+    color: #dc2626 !important;
+    font-size: 12px !important;
+    text-align: right !important;
+  }
+
+  .statement-month-row td:nth-child(4) {
+    grid-area: date !important;
+    font-size: 11.5px !important;
+    color: var(--text-muted) !important;
   }
 
   /* Table Footer Bar */
@@ -2103,18 +2487,9 @@ body {
     padding: 10px;
   }
 
-  .credit-mapping-table th,
-  .credit-mapping-table td {
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-
-  .narration-primary {
-    font-size: 12px;
-  }
-
   .cell-input-mapping {
-    max-width: 150px;
+    max-width: 100%;
+    width: 100%;
   }
 
   .toast-notification {
