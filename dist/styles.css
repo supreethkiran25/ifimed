@@ -77,23 +77,24 @@
   padding: 0;
 }
 
-html {
-  box-sizing: border-box;
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  font-family: var(--font-sans);
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   background-color: var(--bg-canvas);
+  font-family: var(--font-sans);
   color: var(--text-primary);
   line-height: 1.5;
   font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
-  min-height: 100vh;
-  max-width: 100vw;
-  overflow-x: hidden;
-  width: 100%;
+  box-sizing: border-box;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
 }
 
 /* ==========================================================================
@@ -107,11 +108,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 100;
   width: 100%;
-  max-width: 100vw;
 }
 
 .top-navbar-left {
@@ -275,10 +274,11 @@ body {
    ========================================================================== */
 .app-shell {
   display: flex;
-  min-height: calc(100vh - 54px);
+  flex: 1;
+  height: calc(100vh - 54px);
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow: hidden;
   position: relative;
 }
 
@@ -308,11 +308,11 @@ body {
   color: var(--navy-text-subtle);
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 54px;
-  height: calc(100vh - 54px);
+  height: 100%;
+  flex-shrink: 0;
   z-index: 90;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-y: auto;
 }
 
 .sidebar-nav {
@@ -383,6 +383,7 @@ body {
 /* Main Content Area */
 .main-content-scroll {
   flex: 1;
+  height: 100%;
   padding: 24px 32px 48px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -718,66 +719,6 @@ body {
   margin-top: 2px;
 }
 
-/* Credit Trend Mini Bar Chart (Card 4) */
-.kpi-trend-card {
-  padding-bottom: 12px;
-}
-
-.trend-badge-sub {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.kpi-trend-content {
-  margin-top: 8px;
-}
-
-.mini-bar-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  height: 52px;
-  gap: 8px;
-  padding: 0 4px;
-}
-
-.chart-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  height: 100%;
-  flex: 1;
-  justify-content: flex-end;
-}
-
-.chart-bar {
-  width: 12px;
-  background: #93c5fd;
-  border-radius: 3px 3px 0 0;
-  transition: height 0.3s;
-  cursor: pointer;
-}
-
-.chart-bar:hover {
-  background: #60a5fa;
-}
-
-.chart-bar.bar-active {
-  background: #1877f2;
-}
-
-.chart-label {
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.chart-col.active .chart-label {
-  color: #1877f2;
-  font-weight: 700;
-}
 
 /* Content Cards */
 .content-card {
@@ -1810,6 +1751,28 @@ body {
 
 /* Medium Tablets & Mobile Drawer Navigation (< 992px) */
 @media (max-width: 992px) {
+  html, body {
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body {
+    display: block;
+  }
+
+  .top-navbar {
+    position: sticky;
+    top: 0;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: calc(100vh - 54px);
+    display: block;
+    overflow: visible;
+  }
+
   .mobile-sidebar-toggle {
     display: inline-flex;
   }
@@ -1828,7 +1791,7 @@ body {
     height: calc(100vh - 54px);
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 90;
+    z-index: 1000;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   }
 
@@ -1837,6 +1800,8 @@ body {
   }
 
   .main-content-scroll {
+    height: auto;
+    overflow: visible;
     width: 100%;
     max-width: 100%;
     padding: 20px 18px 40px;
