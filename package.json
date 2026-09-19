@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Bank Statement Credit Mapping & Reconciliation Workspace",
   "scripts": {
-    "dev": "node server.js",
-    "start": "node server.js",
+    "dev": "node dev-server.js",
+    "start": "node dev-server.js",
     "build": "echo 'Static build complete'",
     "test": "node test_reconciliation.js"
   },

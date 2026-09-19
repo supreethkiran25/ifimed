@@ -23,7 +23,6 @@ function handler(req, res) {
     const filename = (safePath === '/' || safePath === '' || safePath === '\\') ? 'index.html' : safePath.replace(/^[\/\\]/, '');
     let filePath = path.join(__dirname, filename);
 
-    // Fallback to index.html if file doesn't exist or is a directory
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       filePath = path.join(__dirname, 'index.html');
     }
@@ -34,7 +33,7 @@ function handler(req, res) {
 
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=0, must-revalidate'
+      'Cache-Control': 'no-cache'
     });
     res.end(content);
   } catch (err) {
@@ -51,12 +50,8 @@ function handler(req, res) {
 
 const server = http.createServer(handler);
 
-// Only listen on port when executed directly (e.g. node server.js or npm run dev)
-if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`IFIMED Reconciliation Server running at http://localhost:${PORT}/`);
-  });
-}
+server.listen(PORT, () => {
+  console.log(`IFIMED Reconciliation Server running at http://localhost:${PORT}/`);
+});
 
-// Export handler for serverless / cloud platforms (Vercel, AWS Lambda, etc.)
-module.exports = handler;
+module.exports = server;
