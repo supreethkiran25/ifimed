@@ -1541,10 +1541,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const closeCatModal = () => { if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'none'; };
+  const closeCatModal = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'none';
+  };
   if (closeInvoicesCatalogBtn) closeInvoicesCatalogBtn.addEventListener('click', closeCatModal);
   if (doneInvoicesCatalogBtn) doneInvoicesCatalogBtn.addEventListener('click', closeCatModal);
   if (invoiceCatalogSearch) invoiceCatalogSearch.addEventListener('input', renderInvoicesCatalogModal);
+
+  // Universal Modal Backdrop Click to Close (Never get trapped)
+  [addInvoiceModal, addBankModal, invoicesCatalogModal, unlinkModal, commandPaletteModal].forEach(modal => {
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.style.display = 'none';
+        }
+      });
+    }
+  });
 
   // 9. Add Bank Account Modal
   const openBankModal = () => {
@@ -1598,8 +1615,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 10. Unlink Dialog
-  if (closeUnlinkModalBtn) closeUnlinkModalBtn.addEventListener('click', () => { unlinkModal.style.display = 'none'; });
-  if (cancelUnlinkBtn) cancelUnlinkBtn.addEventListener('click', () => { unlinkModal.style.display = 'none'; });
+  if (closeUnlinkModalBtn) closeUnlinkModalBtn.addEventListener('click', () => { if (unlinkModal) unlinkModal.style.display = 'none'; });
+  if (cancelUnlinkBtn) cancelUnlinkBtn.addEventListener('click', () => { if (unlinkModal) unlinkModal.style.display = 'none'; });
   if (confirmUnlinkBtn) confirmUnlinkBtn.addEventListener('click', executeUnlink);
 
   // 11. Command Palette Trigger & Keyboard Shortcut
@@ -1622,12 +1639,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (commandPaletteInput) {
     commandPaletteInput.addEventListener('input', () => {
       renderCommandPaletteResults(commandPaletteInput.value);
-    });
-  }
-
-  if (commandPaletteModal) {
-    commandPaletteModal.addEventListener('click', (e) => {
-      if (e.target === commandPaletteModal) closeCommandPalette();
     });
   }
 
