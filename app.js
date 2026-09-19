@@ -505,8 +505,9 @@ const toastNotification = document.getElementById('toastNotification');
 const toastIcon = document.getElementById('toastIcon');
 const toastMessage = document.getElementById('toastMessage');
 
-// Preview banner
+// Preview banner & Trend Chart
 const closePreviewBannerBtn = document.getElementById('closePreviewBannerBtn');
+const miniBarChart = document.getElementById('miniBarChart');
 
 // =============================================================================
 // 3. Formatting & Toast Helpers
@@ -1373,13 +1374,124 @@ function renderCommandPaletteResults(term) {
 }
 
 // =============================================================================
-// 12. Main Re-render Coordinator
+// 12. Dynamic 6-Month Credit Trend Bar Chart
+// =============================================================================
+
+const TREND_MONTHS = [
+  { monthId: '2026-04', label: 'April 2026', shortName: 'Apr', defaultInflow: 1640000, credits: 78 },
+  { monthId: '2026-05', label: 'May 2026', shortName: 'May', defaultInflow: 2120000, credits: 96 },
+  { monthId: '2026-06', label: 'June 2026', shortName: 'Jun', defaultInflow: 2580000, credits: 118 },
+  { monthId: '2026-07', label: 'July 2026', shortName: 'Jul', defaultInflow: 2850000, credits: 126 },
+  { monthId: '2026-08', label: 'August 2026', shortName: 'Aug', defaultInflow: 2410000, credits: 132 },
+  { monthId: '2026-09', label: 'September 2026', shortName: 'Sep', defaultInflow: 3383500, credits: 148 }
+];
+
+function renderCreditTrendChart() {
+  if (!miniBarChart) return;
+  miniBarChart.innerHTML = '';
+
+  const bank = getActiveBank();
+
+  // Compute live monthly volumes for active bank
+  const data = TREND_MONTHS.map(m => {
+    const sheet = bank.sheets ? bank.sheets.find(s => s.monthId === m.monthId) : null;
+    let total = 0;
+    let count = 0;
+    if (sheet && sheet.records && sheet.records.length > 0) {
+      total = sheet.records.reduce((acc, r) => acc + r.amount, 0);
+      count = sheet.records.length;
+    } else if (sheet) {
+      total = (sheet.creditsCount || m.credits) * 22000;
+      count = sheet.creditsCount || m.credits;
+    } else {
+      total = m.defaultInflow;
+      count = m.credits;
+    }
+    return {
+      ...m,
+      total,
+      count
+    };
+  });
+
+  const maxTotal = Math.max(...data.map(d => d.total), 1);
+
+  data.forEach(d => {
+    const isCurrent = d.monthId === selectedMonthId;
+    const heightPct = Math.max(24, Math.round((d.total / maxTotal) * 95));
+
+    const col = document.createElement('div');
+    col.className = `chart-col ${isCurrent ? 'active' : ''}`;
+    col.title = `${d.label}: ${formatINR(d.total)} (${d.count} transactions) · Click to view`;
+
+    col.innerHTML = `
+      <div class="chart-bar ${isCurrent ? 'bar-active' : ''}" style="height: ${heightPct}%;"></div>
+      <span class="chart-label ${isCurrent ? 'label-active' : ''}">${d.shortName}</span>
+    `;
+
+    col.addEventListener('click', () => {
+      let sheet = bank.sheets.find(s => s.monthId === d.monthId);
+      if (!sheet) {
+        sheet = {
+          monthId: d.monthId,
+          label: d.label,
+          fileName: `${bank.name.replace(/\s+/g, '_')}_${d.shortName}_2026.xlsx`,
+          uploadedOn: `15 ${d.shortName} 2026`,
+          creditsCount: d.count,
+          debitsCount: Math.round(d.count * 0.6),
+          records: [
+            {
+              id: `CR-${d.monthId}-01`,
+              date: `18 ${d.shortName} 2026`,
+              narration: `RTGS/BARB0029103/CONSIGNMENT #${d.shortName.toUpperCase()}`,
+              payer: 'Zydus Healthcare Ltd',
+              type: 'RTGS',
+              bankRef: `RTGS-${d.monthId}-01`,
+              amount: Math.round(d.total * 0.6),
+              status: 'unmapped',
+              mapping: null
+            },
+            {
+              id: `CR-${d.monthId}-02`,
+              date: `12 ${d.shortName} 2026`,
+              narration: `NEFT-CR-AXISP00291-ANNUAL VACCINE TENDER`,
+              payer: 'Apollo Hospitals Group',
+              type: 'NEFT',
+              bankRef: `NEFT-${d.monthId}-02`,
+              amount: Math.round(d.total * 0.4),
+              status: 'mapped',
+              mapping: {
+                invoiceNo: `INV-${d.shortName.toUpperCase()}-041`,
+                guestName: 'Apollo Hospitals Group',
+                mappedAt: `12 ${d.shortName} 2026`,
+                mappedBy: 'Boss (Accounts Controller)',
+                isNote: false
+              }
+            }
+          ]
+        };
+        bank.sheets.push(sheet);
+      }
+
+      selectedMonthId = d.monthId;
+      activeConfirmingRowId = null;
+      renderAll();
+      showToast(`Switched to ${d.label} statement (${formatINR(d.total)})`);
+    });
+
+    miniBarChart.appendChild(col);
+  });
+}
+
+// =============================================================================
+// 13. Main Re-render Coordinator
 // =============================================================================
 
 function renderAll() {
   renderBankSelector();
   renderStatementFilesTable();
   renderCreditTable();
+  renderCreditTrendChart();
   if (totalInvoicesCountBadge) totalInvoicesCountBadge.textContent = `${appInvoices.length} Invoices`;
 }
 

@@ -751,33 +751,47 @@ body {
   height: 100%;
   flex: 1;
   justify-content: flex-end;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  padding: 2px 0;
+  transition: all var(--transition-fast);
+}
+
+.chart-col:hover .chart-bar {
+  background: #60a5fa;
+  transform: scaleY(1.05);
+  transform-origin: bottom;
+}
+
+.chart-col:hover .chart-label {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .chart-bar {
-  width: 12px;
+  width: 14px;
   background: #93c5fd;
-  border-radius: 3px 3px 0 0;
-  transition: height 0.3s;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease, background 0.2s ease, transform 0.15s ease;
   cursor: pointer;
 }
 
-.chart-bar:hover {
-  background: #60a5fa;
-}
-
 .chart-bar.bar-active {
-  background: #1877f2;
+  background: #1877f2 !important;
+  box-shadow: 0 2px 6px rgba(24, 119, 242, 0.4);
 }
 
 .chart-label {
-  font-size: 10px;
+  font-size: 10.5px;
   color: #94a3b8;
   font-weight: 500;
+  transition: color 0.15s ease;
 }
 
-.chart-col.active .chart-label {
-  color: #1877f2;
-  font-weight: 700;
+.chart-col.active .chart-label,
+.chart-label.label-active {
+  color: #1877f2 !important;
+  font-weight: 700 !important;
 }
 
 /* Content Cards */
