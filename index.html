@@ -352,112 +352,122 @@
               <p class="card-subtitle" id="mappingCardSubtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
             </div>
 
-            <div class="mapping-desk-toolbar">
-              <!-- Search narration or reference -->
-              <div class="search-input-wrapper">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <input type="text" id="tableSearchInput" placeholder="Search narration or reference" class="table-search-box">
-              </div>
-
-              <!-- Filter Dropdown Button -->
-              <div class="filter-dropdown-container">
-                <button type="button" class="btn btn-outline btn-sm" id="filterDropdownBtn">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            <div class="mapping-desk-toolbar" role="toolbar" aria-label="Reconciliation Table Tools">
+              <!-- Query Controls: Search & Filter -->
+              <div class="toolbar-group toolbar-group-query">
+                <div class="search-input-wrapper">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <span id="activeFilterLabel">Filter</span>
-                </button>
+                  <input type="text" id="tableSearchInput" placeholder="Search narration or reference" class="table-search-box" aria-label="Search narration or reference">
+                </div>
 
-                <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;">
-                  <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll">
-                    All (<span id="countAll">0</span>)
+                <!-- Filter Dropdown Button -->
+                <div class="filter-dropdown-container">
+                  <button type="button" class="btn btn-outline btn-sm" id="filterDropdownBtn" aria-haspopup="true" aria-expanded="false" title="Filter transactions by status">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
+                    <span id="activeFilterLabel">Filter</span>
                   </button>
-                  <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped">
-                    Pending (<span id="countUnmapped">0</span>)
-                  </button>
-                  <button type="button" class="filter-menu-item" data-filter="mapped" id="filterMapped">
-                    Reconciled (<span id="countMapped">0</span>)
-                  </button>
+
+                  <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;">
+                    <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll">
+                      All (<span id="countAll">0</span>)
+                    </button>
+                    <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped">
+                      Pending (<span id="countUnmapped">0</span>)
+                    </button>
+                    <button type="button" class="filter-menu-item" data-filter="mapped" id="filterMapped">
+                      Reconciled (<span id="countMapped">0</span>)
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <!-- Export Reconciled Action (Grouped with Table Controls) -->
-              <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <span id="exportCsvBtnText">Export CSV</span>
-              </button>
+              <div class="toolbar-divider" role="separator" aria-orientation="vertical"></div>
 
-              <!-- Auto-Match All Records from Statement Files Action -->
-              <button type="button" class="btn btn-outline btn-sm" id="autoMatchAllBtn" title="Auto-match all open transactions with statement invoices/bills" style="color: var(--ifimed-primary); font-weight: 600;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                </svg>
-                <span>Auto-Match All</span>
-              </button>
-
-              <!-- Credit Mode Actions -->
-              <div class="mode-actions-group" id="creditActionsGroup">
-                <button type="button" class="btn btn-outline btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
+              <!-- Primary Bulk Workflow Action -->
+              <div class="toolbar-group toolbar-group-primary">
+                <button type="button" class="btn btn-primary btn-sm" id="autoMatchAllBtn" title="Auto-match all open transactions with statement invoices/bills" aria-label="Auto-match all open transactions">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                   </svg>
-                  <span>Add Invoice</span>
-                </button>
-
-                <button type="button" class="btn btn-outline btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  <span>Upload Invoices</span>
-                </button>
-                <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
-
-                <button type="button" class="btn btn-outline btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                  <span id="totalInvoicesCountBadge">207 Invoices</span>
+                  <span>Auto-Match All</span>
                 </button>
               </div>
 
-              <!-- Debit Mode Actions -->
-              <div class="mode-actions-group" id="debitActionsGroup" style="display: none;">
-                <button type="button" class="btn btn-outline btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
+              <div class="toolbar-divider" role="separator" aria-orientation="vertical"></div>
+
+              <!-- Secondary Actions: Export & Catalog Management -->
+              <div class="toolbar-group toolbar-group-secondary">
+                <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV" aria-label="Export reconciled transactions to CSV">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
                   </svg>
-                  <span>Add Vendor Bill</span>
+                  <span id="exportCsvBtnText">Export CSV</span>
                 </button>
 
-                <button type="button" class="btn btn-outline btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  <span>Upload Bills</span>
-                </button>
-                <input type="file" id="billCsvInput" accept=".csv,text/csv" class="hidden-input">
+                <!-- Credit Mode Actions -->
+                <div class="mode-actions-group" id="creditActionsGroup">
+                  <button type="button" class="btn btn-outline btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Add Invoice</span>
+                  </button>
 
-                <button type="button" class="btn btn-outline btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                  <span id="totalBillsCountBadge">9 Vendor Bills</span>
-                </button>
+                  <button type="button" class="btn btn-outline btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <span>Upload Invoices</span>
+                  </button>
+                  <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
+
+                  <button type="button" class="btn btn-outline btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span id="totalInvoicesCountBadge">207 Invoices</span>
+                  </button>
+                </div>
+
+                <!-- Debit Mode Actions -->
+                <div class="mode-actions-group" id="debitActionsGroup" style="display: none;">
+                  <button type="button" class="btn btn-outline btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Add Vendor Bill</span>
+                  </button>
+
+                  <button type="button" class="btn btn-outline btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <span>Upload Bills</span>
+                  </button>
+                  <input type="file" id="billCsvInput" accept=".csv,text/csv" class="hidden-input">
+
+                  <button type="button" class="btn btn-outline btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span id="totalBillsCountBadge">9 Vendor Bills</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

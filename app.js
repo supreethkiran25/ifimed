@@ -288,6 +288,17 @@ function formatINR(amount) {
   });
 }
 
+function formatBankRef(bankRef, type) {
+  if (!bankRef || bankRef === '—') return '—';
+  if (type) {
+    const prefixRegex = new RegExp(`^${type}[-_/\\s]+`, 'i');
+    if (prefixRegex.test(bankRef)) {
+      return bankRef.replace(prefixRegex, '');
+    }
+  }
+  return bankRef;
+}
+
 function showToast(message, type = 'success') {
   if (!toastNotification) return;
   
@@ -870,7 +881,7 @@ function renderCreditTable() {
       <td class="col-ref">
         <div class="ref-badge-wrap">
           <span class="badge-type ${badgeClass}">${escapeHtml(row.type)}</span>
-          <span class="ref-code-text">${escapeHtml(row.bankRef || '—')}</span>
+          <span class="ref-code-text">${escapeHtml(formatBankRef(row.bankRef, row.type))}</span>
         </div>
       </td>
       <td class="col-amount text-right">
@@ -883,7 +894,7 @@ function renderCreditTable() {
         ${statusPillHtml}
       </td>
       <td class="col-actions text-center">
-        <button type="button" class="btn-actions-menu" id="action-btn-${row.id}" title="Row options">···</button>
+        <button type="button" class="btn-actions-menu" id="action-btn-${row.id}" title="Row options" aria-label="Row options for transaction ${escapeHtml(row.id)}" aria-haspopup="menu">···</button>
       </td>
     `;
 
