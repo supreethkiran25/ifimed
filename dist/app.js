@@ -715,6 +715,16 @@ const confirmUnlinkBtn = document.getElementById('confirmUnlinkBtn');
 const unlinkInvoiceNo = document.getElementById('unlinkInvoiceNo');
 let pendingUnlinkTarget = null;
 
+// Delete Corporate Bank Account Modal
+const deleteBankModal = document.getElementById('deleteBankModal');
+const closeDeleteBankModalBtn = document.getElementById('closeDeleteBankModalBtn');
+const cancelDeleteBankBtn = document.getElementById('cancelDeleteBankBtn');
+const confirmDeleteBankBtn = document.getElementById('confirmDeleteBankBtn');
+const deleteBankTargetName = document.getElementById('deleteBankTargetName');
+const deleteBankTargetAcc = document.getElementById('deleteBankTargetAcc');
+const deleteBankMetaInfo = document.getElementById('deleteBankMetaInfo');
+let pendingDeleteBankId = null;
+
 // Toast Feedback
 const toastNotification = document.getElementById('toastNotification');
 const toastIcon = document.getElementById('toastIcon');
@@ -723,6 +733,45 @@ const toastMessage = document.getElementById('toastMessage');
 // Preview banner & Trend Chart
 const closePreviewBannerBtn = document.getElementById('closePreviewBannerBtn');
 const miniBarChart = document.getElementById('miniBarChart');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+
+// =============================================================================
+// Theme Manager (Dark & Light Mode Engine)
+// =============================================================================
+
+function getActiveTheme() {
+  return document.documentElement.getAttribute('data-theme') ||
+    localStorage.getItem('ifimed_theme') ||
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+function setTheme(theme, save = true) {
+  document.documentElement.setAttribute('data-theme', theme);
+  if (save) {
+    try {
+      localStorage.setItem('ifimed_theme', theme);
+    } catch (e) {}
+  }
+  if (themeToggleBtn) {
+    themeToggleBtn.setAttribute('title', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode (Ctrl+D)`);
+    themeToggleBtn.setAttribute('aria-label', `Theme: ${theme}. Click to switch.`);
+  }
+  if (typeof renderCreditTrendChart === 'function') {
+    renderCreditTrendChart();
+  }
+  showToast(`Switched to ${theme === 'dark' ? 'Dark' : 'Light'} Mode`, 'info');
+}
+
+function toggleTheme() {
+  const current = getActiveTheme();
+  const next = current === 'dark' ? 'light' : 'dark';
+  setTheme(next, true);
+}
+
+// Expose globally
+window.setTheme = setTheme;
+window.toggleTheme = toggleTheme;
+window.getActiveTheme = getActiveTheme;
 
 // =============================================================================
 // 3. Formatting & Toast Helpers
@@ -741,14 +790,14 @@ function showToast(message, type = 'success') {
   
   if (type === 'success') {
     toastIcon.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green-solid)" stroke-width="2.5">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
         <polyline points="22 4 12 14.01 9 11.01"></polyline>
       </svg>
     `;
   } else if (type === 'amber') {
     toastIcon.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--amber-solid)" stroke-width="2.5">
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="8" x2="12" y2="12"></line>
         <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -756,7 +805,7 @@ function showToast(message, type = 'success') {
     `;
   } else {
     toastIcon.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2.5">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ifimed-primary)" stroke-width="2.5">
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="16" x2="12" y2="12"></line>
         <line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -837,13 +886,14 @@ function getActiveBank() {
 
 function getCurrentSheet() {
   const bank = getActiveBank();
-  return bank.sheets.find(s => s.monthId === selectedMonthId) || bank.sheets[0];
+  return (bank && bank.sheets && bank.sheets.find(s => s.monthId === selectedMonthId)) || (bank && bank.sheets && bank.sheets[0]) || { records: [], debitRecords: [] };
 }
 
 function switchBank(bankId) {
+  const bank = corporateBanks.find(b => b.id === bankId);
+  if (!bank) return;
   selectedBankId = bankId;
-  const bank = getActiveBank();
-  selectedMonthId = bank.sheets[0] ? bank.sheets[0].monthId : '2026-09';
+  selectedMonthId = (bank.sheets && bank.sheets[0]) ? bank.sheets[0].monthId : '2026-09';
   activeConfirmingRowId = null;
 
   if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
@@ -851,8 +901,76 @@ function switchBank(bankId) {
   showToast(`Switched account to ${bank.name} (${bank.accNo})`);
 }
 
+function promptDeleteBank(bankId, event) {
+  if (event) event.stopPropagation();
+
+  if (corporateBanks.length <= 1) {
+    showToast('Cannot delete this bank account. The workspace requires at least one active bank account.', 'amber');
+    return;
+  }
+
+  const bank = corporateBanks.find(b => b.id === bankId);
+  if (!bank) return;
+
+  pendingDeleteBankId = bankId;
+
+  if (deleteBankTargetName) deleteBankTargetName.textContent = bank.name;
+  if (deleteBankTargetAcc) deleteBankTargetAcc.textContent = `${bank.type} · ${bank.accNo}`;
+
+  let totalSheets = (bank.sheets || []).length;
+  let totalCredits = 0;
+  let totalDebits = 0;
+  (bank.sheets || []).forEach(s => {
+    totalCredits += (s.records || []).length;
+    totalDebits += (s.debitRecords || []).length;
+  });
+
+  if (deleteBankMetaInfo) {
+    deleteBankMetaInfo.innerHTML = `
+      <div><strong>Associated Data:</strong> ${totalSheets} monthly statement sheet${totalSheets !== 1 ? 's' : ''}, ${totalCredits} credit transaction${totalCredits !== 1 ? 's' : ''}, ${totalDebits} debit transaction${totalDebits !== 1 ? 's' : ''}.</div>
+      ${bank.id === selectedBankId ? '<div style="margin-top: 6px; color: var(--ifimed-primary); font-weight: 500;">ℹ️ This is currently your active bank account. If deleted, the workspace will automatically switch to another account.</div>' : ''}
+    `;
+  }
+
+  if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
+  if (deleteBankModal) deleteBankModal.style.display = 'flex';
+}
+
+function closeDeleteBankModal() {
+  pendingDeleteBankId = null;
+  if (deleteBankModal) deleteBankModal.style.display = 'none';
+}
+
+function confirmDeleteBank() {
+  if (!pendingDeleteBankId) return;
+
+  if (corporateBanks.length <= 1) {
+    showToast('Cannot delete this bank account. At least one bank account must remain.', 'amber');
+    closeDeleteBankModal();
+    return;
+  }
+
+  const targetBank = corporateBanks.find(b => b.id === pendingDeleteBankId);
+  const targetName = targetBank ? targetBank.name : 'Bank';
+  const wasActive = selectedBankId === pendingDeleteBankId;
+
+  corporateBanks = corporateBanks.filter(b => b.id !== pendingDeleteBankId);
+
+  if (wasActive) {
+    selectedBankId = corporateBanks[0].id;
+    const newBank = corporateBanks[0];
+    selectedMonthId = (newBank.sheets && newBank.sheets[0]) ? newBank.sheets[0].monthId : '2026-09';
+    activeConfirmingRowId = null;
+  }
+
+  closeDeleteBankModal();
+  renderAll();
+  showToast(`Bank account "${targetName}" deleted successfully`);
+}
+
 function renderBankSelector() {
   const bank = getActiveBank();
+  if (!bank) return;
   const bankFullName = `${bank.name} ${bank.type} ${bank.accNo}`;
 
   if (activeBankName) activeBankName.textContent = bankFullName;
@@ -863,18 +981,41 @@ function renderBankSelector() {
 
   if (bankOptionsList) {
     bankOptionsList.innerHTML = '';
+    const canDelete = corporateBanks.length > 1;
+
     corporateBanks.forEach(b => {
       const isSelected = b.id === selectedBankId;
       const item = document.createElement('div');
       item.className = `bank-option-item ${isSelected ? 'active' : ''}`;
       item.innerHTML = `
-        <div>
+        <div class="bank-option-info">
           <div class="bank-option-title">${escapeHtml(b.name)}</div>
           <div class="bank-option-sub">${escapeHtml(b.type)} · ${escapeHtml(b.accNo)}</div>
         </div>
-        <span class="bank-option-badge">${isSelected ? 'Active' : 'Select'}</span>
+        <div class="bank-option-actions">
+          <span class="bank-option-badge">${isSelected ? 'Active' : 'Select'}</span>
+          <button type="button" class="bank-delete-btn ${canDelete ? '' : 'disabled'}" title="${canDelete ? `Delete ${escapeHtml(b.name)}` : 'Cannot delete sole remaining bank account'}" aria-label="Delete ${escapeHtml(b.name)}" ${canDelete ? '' : 'disabled'}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
       `;
-      item.addEventListener('click', () => switchBank(b.id));
+      item.addEventListener('click', (e) => {
+        if (!e.target.closest('.bank-delete-btn')) {
+          switchBank(b.id);
+        }
+      });
+
+      const delBtn = item.querySelector('.bank-delete-btn');
+      if (delBtn && canDelete) {
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          promptDeleteBank(b.id, e);
+        });
+      }
+
       bankOptionsList.appendChild(item);
     });
   }
@@ -898,7 +1039,7 @@ function renderStatementFilesTable() {
       <td>
         <div class="file-name-cell">
           <span class="file-status-dot ${isCurrent ? 'dot-active' : ''}"></span>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1877f2" stroke-width="2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
           </svg>
@@ -1194,8 +1335,8 @@ function renderCreditTable() {
               item.className = 'suggestion-item';
               item.innerHTML = `
                 <div class="suggestion-item-top">
-                  <span class="suggestion-inv-num" style="color: #e11d48;">${escapeHtml(m.billNo)}</span>
-                  <span class="suggestion-expected-amount font-bold" style="color: #be123c;">${formatINR(m.amount)}</span>
+                  <span class="suggestion-inv-num text-debit">${escapeHtml(m.billNo)}</span>
+                  <span class="suggestion-expected-amount font-bold amount-debit">${formatINR(m.amount)}</span>
                 </div>
                 <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
               `;
@@ -1361,7 +1502,7 @@ function renderCreditTable() {
             <!-- Action Buttons -->
             <div class="confirm-actions-toolbar">
               <button type="button" class="btn-confirm-cancel" id="cancel-confirm-${row.id}">Cancel</button>
-              <button type="button" class="btn-confirm-submit" id="submit-confirm-${row.id}" style="${isDebit ? 'background: #e11d48;' : ''}">
+              <button type="button" class="btn-confirm-submit ${isDebit ? 'btn-submit-debit' : ''}" id="submit-confirm-${row.id}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
@@ -1405,8 +1546,8 @@ function renderCreditTable() {
             item.className = 'suggestion-item';
             item.innerHTML = `
               <div class="suggestion-item-top">
-                <span class="suggestion-inv-num" style="color: #e11d48;">${escapeHtml(m.billNo)}</span>
-                <span class="suggestion-expected-amount font-bold" style="color: #be123c;">${formatINR(m.amount)}</span>
+                <span class="suggestion-inv-num text-debit">${escapeHtml(m.billNo)}</span>
+                <span class="suggestion-expected-amount font-bold amount-debit">${formatINR(m.amount)}</span>
               </div>
               <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
             `;
@@ -1715,9 +1856,9 @@ function renderVendorBillsCatalogModal() {
   filtered.forEach(bill => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong class="font-mono" style="color: #be123c;">${escapeHtml(bill.billNo)}</strong></td>
+      <td><strong class="font-mono text-debit">${escapeHtml(bill.billNo)}</strong></td>
       <td>${escapeHtml(bill.vendorName)}</td>
-      <td class="font-bold" style="color: #be123c;">${formatINR(bill.amount)}</td>
+      <td class="font-bold text-debit">${formatINR(bill.amount)}</td>
       <td>${escapeHtml(bill.date || '—')}</td>
       <td><span class="text-muted">${escapeHtml(bill.category || '—')}</span></td>
     `;
@@ -1769,8 +1910,11 @@ function renderDashboardView() {
   const dashBankList = document.getElementById('dashboardBankList');
   if (dashBankList) {
     dashBankList.innerHTML = '';
+    const canDelete = corporateBanks.length > 1;
+
     corporateBanks.forEach(b => {
-      const activeSheet = b.sheets[0] || { records: [], debitRecords: [] };
+      const isSelected = b.id === selectedBankId;
+      const activeSheet = (b.sheets && b.sheets[0]) ? b.sheets[0] : { records: [], debitRecords: [] };
       const totalInflow = (activeSheet.records || []).reduce((acc, r) => acc + r.amount, 0);
       const totalOutflow = (activeSheet.debitRecords || []).reduce((acc, r) => acc + r.amount, 0);
       const mappedCredits = (activeSheet.records || []).filter(r => r.status === 'mapped').length;
@@ -1784,11 +1928,41 @@ function renderDashboardView() {
           <strong style="font-size: 13.5px; color: var(--text-primary);">${escapeHtml(b.name)}</strong>
           <div style="font-size: 11.5px; color: var(--text-muted);">${escapeHtml(b.type)} · ${escapeHtml(b.accNo)}</div>
         </div>
-        <div style="text-align: right;">
-          <div style="font-weight: 700; font-size: 14px;">In: ${formatINR(totalInflow)} <span style="color: #be123c; font-size: 12px; font-weight: 600;">| Out: ${formatINR(totalOutflow)}</span></div>
-          <div style="font-size: 11px; color: #059669; font-weight: 600;">${pct}% Credits Reconciled (${mappedCredits}/${totalCredits})</div>
+        <div class="bank-dashboard-row-right">
+          <div style="text-align: right;">
+            <div style="font-weight: 700; font-size: 14px;">In: ${formatINR(totalInflow)} <span class="text-debit" style="font-size: 12px; font-weight: 600;">| Out: ${formatINR(totalOutflow)}</span></div>
+            <div class="text-credit" style="font-size: 11px; font-weight: 600;">${pct}% Credits Reconciled (${mappedCredits}/${totalCredits})</div>
+          </div>
+          <div class="bank-dash-actions">
+            <button type="button" class="btn btn-outline btn-sm bank-dash-switch-btn" title="Switch to ${escapeHtml(b.name)}">
+              ${isSelected ? 'Active' : 'Switch'}
+            </button>
+            <button type="button" class="bank-dash-delete-btn ${canDelete ? '' : 'disabled'}" title="${canDelete ? `Delete ${escapeHtml(b.name)} account` : 'Cannot delete sole remaining bank account'}" aria-label="Delete ${escapeHtml(b.name)}" ${canDelete ? '' : 'disabled'}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
         </div>
       `;
+
+      const switchBtn = row.querySelector('.bank-dash-switch-btn');
+      if (switchBtn) {
+        switchBtn.addEventListener('click', () => {
+          switchBank(b.id);
+          switchView('bank-statements');
+        });
+      }
+
+      const dashDelBtn = row.querySelector('.bank-dash-delete-btn');
+      if (dashDelBtn && canDelete) {
+        dashDelBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          promptDeleteBank(b.id, e);
+        });
+      }
+
       dashBankList.appendChild(row);
     });
   }
@@ -1839,14 +2013,27 @@ function renderCommandPaletteResults(term) {
     { title: 'Switch to Credit Mapping Desk', desc: 'Match incoming credits to sales invoices', action: () => { switchView('bank-statements'); switchMappingMode('credit'); } },
     { title: 'View Bank Statements', desc: 'Jump to reconciliation workspace', action: () => switchView('bank-statements') },
     { title: 'View Financial Dashboard', desc: 'Jump to executive analytics', action: () => switchView('dashboard') },
-    { title: 'Switch Bank: Canara Bank', desc: 'Account ••4092', action: () => switchBank('canara-4092') },
-    { title: 'Switch Bank: HDFC Bank', desc: 'Account ••1930', action: () => switchBank('hdfc-1930') },
-    { title: 'Switch Bank: State Bank of India', desc: 'Account ••8814', action: () => switchBank('sbi-8814') },
+    { title: 'Toggle Dark / Light Theme', desc: 'Switch appearance theme (Ctrl+D)', action: () => toggleTheme() },
     { title: 'Add Invoice Manually', desc: 'Create new pending customer sales invoice', action: () => { if (openAddInvoiceModalBtn) openAddInvoiceModalBtn.click(); } },
     { title: 'Add Vendor Bill Manually', desc: 'Create new pending supplier purchase bill', action: () => { if (openAddBillModalBtn) openAddBillModalBtn.click(); } },
     { title: 'View Invoices Catalog', desc: 'Inspect available customer invoice records', action: () => { if (viewInvoicesBtn) viewInvoicesBtn.click(); } },
     { title: 'View Vendor Bills Catalog', desc: 'Inspect available vendor bills & expenses', action: () => { if (viewBillsBtn) viewBillsBtn.click(); } }
   ];
+
+  corporateBanks.forEach(b => {
+    actions.push({
+      title: `Switch Bank: ${b.name}`,
+      desc: `${b.type} · ${b.accNo}`,
+      action: () => switchBank(b.id)
+    });
+    if (corporateBanks.length > 1) {
+      actions.push({
+        title: `Delete Bank: ${b.name}`,
+        desc: `Remove ${b.type} · ${b.accNo} from workspace`,
+        action: () => promptDeleteBank(b.id)
+      });
+    }
+  });
 
   const matched = actions.filter(a => !q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q));
 
@@ -1925,7 +2112,7 @@ function renderCreditTrendChart() {
     col.title = `${d.label} (${isDebit ? 'Debits' : 'Credits'}): ${formatINR(d.total)} (${d.count} transactions) · Click to view`;
 
     col.innerHTML = `
-      <div class="chart-bar ${isCurrent ? 'bar-active' : ''}" style="height: ${heightPct}%; ${isDebit && isCurrent ? 'background: #e11d48;' : ''}"></div>
+      <div class="chart-bar ${isCurrent ? 'bar-active' : ''} ${isDebit ? 'bar-debit' : ''}" style="height: ${heightPct}%;"></div>
       <span class="chart-label ${isCurrent ? 'label-active' : ''}">${d.shortName}</span>
     `;
 
@@ -2343,13 +2530,43 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cancelUnlinkBtn) cancelUnlinkBtn.addEventListener('click', () => { if (unlinkModal) unlinkModal.style.display = 'none'; });
   if (confirmUnlinkBtn) confirmUnlinkBtn.addEventListener('click', executeUnlink);
 
+  // 14B. Delete Corporate Bank Account Dialog
+  if (closeDeleteBankModalBtn) closeDeleteBankModalBtn.addEventListener('click', closeDeleteBankModal);
+  if (cancelDeleteBankBtn) cancelDeleteBankBtn.addEventListener('click', closeDeleteBankModal);
+  if (confirmDeleteBankBtn) confirmDeleteBankBtn.addEventListener('click', confirmDeleteBank);
+
   // 15. Command Palette Trigger & Keyboard Shortcut
   if (globalSearchTrigger) globalSearchTrigger.addEventListener('click', openCommandPalette);
 
+  // Theme Toggle Button
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleTheme();
+    });
+  }
+
+  // OS Dark Mode Preference Listener
+  if (window.matchMedia) {
+    try {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('ifimed_theme')) {
+          setTheme(e.matches ? 'dark' : 'light', false);
+        }
+      });
+    } catch (err) {}
+  }
+
   document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    // ⌘K or Ctrl+K: Open Command Palette
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
       openCommandPalette();
+    }
+    // ⌘D or Ctrl+D: Toggle Theme
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      toggleTheme();
     }
     if (e.key === 'Escape') {
       closeCommandPalette();
@@ -2359,6 +2576,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'none';
       if (billsCatalogModal) billsCatalogModal.style.display = 'none';
       if (unlinkModal) unlinkModal.style.display = 'none';
+      if (deleteBankModal) closeDeleteBankModal();
     }
   });
 
@@ -2422,4 +2640,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial Boot
   renderAll();
 });
+
+// Expose bank deletion functions globally
+window.promptDeleteBank = promptDeleteBank;
+window.confirmDeleteBank = confirmDeleteBank;
+window.closeDeleteBankModal = closeDeleteBankModal;
 

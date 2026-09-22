@@ -246,6 +246,55 @@ function testActionPermissions() {
   console.log('✔ Full action permissions, debit unlinking, and note confirmation passed');
 }
 
+// 6. Test Corporate Bank Deletion Logic & Safety Safeguards
+function testBankDeletion() {
+  console.log('Testing Corporate Bank Deletion & Safeguards...');
+
+  let testBanks = [
+    { id: 'canara-4092', name: 'Canara Bank', sheets: [{ monthId: '2026-09' }] },
+    { id: 'hdfc-1930', name: 'HDFC Bank', sheets: [{ monthId: '2026-09' }] },
+    { id: 'sbi-8814', name: 'State Bank of India', sheets: [{ monthId: '2026-09' }] }
+  ];
+  let activeBankId = 'canara-4092';
+  let activeMonthId = '2026-09';
+
+  function deleteBank(bankId) {
+    if (testBanks.length <= 1) {
+      return { success: false, reason: 'min_banks_required' };
+    }
+    const wasActive = activeBankId === bankId;
+    testBanks = testBanks.filter(b => b.id !== bankId);
+    if (wasActive) {
+      activeBankId = testBanks[0].id;
+      activeMonthId = testBanks[0].sheets[0] ? testBanks[0].sheets[0].monthId : '2026-09';
+    }
+    return { success: true };
+  }
+
+  // Case A: Delete inactive bank (HDFC Bank)
+  const res1 = deleteBank('hdfc-1930');
+  assert.strictEqual(res1.success, true);
+  assert.strictEqual(testBanks.length, 2);
+  assert.strictEqual(testBanks.some(b => b.id === 'hdfc-1930'), false, 'HDFC Bank should be removed');
+  assert.strictEqual(activeBankId, 'canara-4092', 'Active bank should remain unchanged');
+
+  // Case B: Delete currently active bank (Canara Bank)
+  const res2 = deleteBank('canara-4092');
+  assert.strictEqual(res2.success, true);
+  assert.strictEqual(testBanks.length, 1);
+  assert.strictEqual(testBanks[0].id, 'sbi-8814', 'Only SBI should remain');
+  assert.strictEqual(activeBankId, 'sbi-8814', 'Active bank should automatically switch to SBI');
+
+  // Case C: Attempt to delete the sole remaining bank (SBI)
+  const res3 = deleteBank('sbi-8814');
+  assert.strictEqual(res3.success, false, 'Should fail to delete sole remaining bank');
+  assert.strictEqual(res3.reason, 'min_banks_required');
+  assert.strictEqual(testBanks.length, 1, 'Bank list should still contain the 1 required bank');
+  assert.strictEqual(activeBankId, 'sbi-8814');
+
+  console.log('✔ Corporate Bank Deletion & Minimum-1 Safeguard passed');
+}
+
 // Run all
 try {
   testCreditDeduplication();
@@ -253,8 +302,10 @@ try {
   testCreditConfirmationStep();
   testDebitConfirmationStep();
   testActionPermissions();
-  console.log('\nAll 5 test suites passed successfully! 100% compliant with specifications.');
+  testBankDeletion();
+  console.log('\nAll 6 test suites passed successfully! 100% compliant with specifications.');
 } catch (err) {
   console.error('Test failed:', err);
   process.exit(1);
 }
+
