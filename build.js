@@ -6,7 +6,7 @@ if (!fs.existsSync(dist)) {
   fs.mkdirSync(dist, { recursive: true });
 }
 
-const files = ['index.html', 'styles.css', 'app.js', 'ifimed-logo.jpg'];
+const files = ['index.html', 'styles.css', 'app.js', 'data_ifimed.js', 'ifimed-logo.jpg'];
 
 for (const file of files) {
   const src = path.join(__dirname, file);

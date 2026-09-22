@@ -8,567 +8,68 @@
 // 1. Initial State & Data Store
 // =============================================================================
 
-// Default Customer Invoices Catalog (Dynamic store: users can add manually or upload via CSV)
-let appInvoices = [
-  { invoiceNo: 'INV-2026-0041', guestName: 'ABC Pharma Ltd', amount: 48500, category: 'Syrups & Suspensions Batch #18', date: '19 Sep 2026' },
-  { invoiceNo: 'INV-2026-0039', guestName: 'Hetero Healthcare', amount: 125000, category: 'Hospital Formulations Bulk', date: '18 Sep 2026' },
-  { invoiceNo: 'INV-2026-0038', guestName: 'Zydus Lifesciences', amount: 75000, category: 'Speciality Oncology Consignment', date: '17 Sep 2026' },
-  { invoiceNo: 'INV-2026-0035', guestName: 'Sun Pharma Ltd', amount: 248300, category: 'Cardiovascular Tablets Batch #4', date: '16 Sep 2026' },
-  { invoiceNo: 'INV-2026-0032', guestName: 'Om Sai Medicals', amount: 31400, category: 'Retail Paediatric Drops', date: '16 Sep 2026' },
-  { invoiceNo: 'FDR-2026-0922', guestName: 'Ananya Sharma', amount: 8200, category: 'Bulk Formulations Batch #12', date: '18 Sep 2026' },
-  { invoiceNo: 'INV-KAP-4819', guestName: 'Infosys Ltd (Health Center)', amount: 245000, category: 'Corporate Annual Medicine Supply', date: '18 Sep 2026' },
-  { invoiceNo: 'INV-KAP-4822', guestName: 'Verma Consultancy', amount: 65000, category: 'Workplace Wellness Kits', date: '16 Sep 2026' },
-  { invoiceNo: 'BANQ-2026-104', guestName: 'Mehta Healthcare Network', amount: 500000, category: 'Institutional Antibiotics Tender', date: '17 Sep 2026' },
-  { invoiceNo: 'FDR-2026-0914', guestName: 'Sunita Agarwal', amount: 18000, category: 'Speciality Oncology Adjuvants', date: '16 Sep 2026' },
-  { invoiceNo: 'FDR-2026-0928', guestName: 'Priya Nambiar', amount: 15000, category: 'Vitamins & Minerals Tablets', date: '14 Sep 2026' },
-  { invoiceNo: 'FDR-2026-0931', guestName: 'Vikram Singhania', amount: 42000, category: 'Pain Relief Injectables', date: '19 Sep 2026' },
-  { invoiceNo: 'BANQ-2026-108', guestName: 'Kirloskar Employee Health', amount: 185000, category: 'First Aid & Chronic Care Consignment', date: '13 Sep 2026' },
-  { invoiceNo: 'INV-IFM-2026-019', guestName: 'Apollo Pharmacy Ltd', amount: 325000, category: 'Retail Chain Stockist Batch #88', date: '17 Sep 2026' },
-  { invoiceNo: 'INV-IFM-2026-022', guestName: 'Manipal Hospitals', amount: 145000, category: 'ICU Injectables & IV Fluids', date: '18 Sep 2026' }
-];
+// Customer Invoices Catalog (Dynamic store: initialized with real IFIMED sales invoices)
+let appInvoices = (typeof REAL_INVOICES !== 'undefined' && Array.isArray(REAL_INVOICES))
+  ? JSON.parse(JSON.stringify(REAL_INVOICES))
+  : [];
 
-// Default Vendor Purchase Bills & Operational Expenses Catalog (Dynamic store for debit matching)
-let appVendorBills = [
-  { billNo: 'BILL-2026-081', vendorName: 'Bharat Chemical Synthetics Ltd', amount: 180000, category: 'Active Pharma Ingredients (API)', date: '18 Sep 2026' },
-  { billNo: 'BILL-2026-079', vendorName: 'Omega Packaging & Cartons', amount: 42500, category: 'Blister Pack Foil & Cartons', date: '17 Sep 2026' },
-  { billNo: 'BILL-2026-075', vendorName: 'BlueDart Express Logistics', amount: 16800, category: 'Cold Chain Freight & Shipping', date: '16 Sep 2026' },
-  { billNo: 'BILL-2026-072', vendorName: 'Torrent Power Utilities', amount: 64200, category: 'Manufacturing Plant Electricity', date: '15 Sep 2026' },
-  { billNo: 'BILL-2026-068', vendorName: 'Shree Logistics Warehousing', amount: 85000, category: 'Warehouse Lease & Storage', date: '14 Sep 2026' },
-  { billNo: 'BILL-2026-065', vendorName: 'Dr. Reddy Labs Testing', amount: 35000, category: 'Analytical Quality Testing', date: '14 Sep 2026' },
-  { billNo: 'BILL-2026-059', vendorName: 'Astra Bio-Clean Services', amount: 22400, category: 'Cleanroom Sanitization Supplies', date: '12 Sep 2026' },
-  { billNo: 'BILL-2026-054', vendorName: 'Siemens Healthineers AMC', amount: 115000, category: 'Spectrometry Equipment Maintenance', date: '11 Sep 2026' }
-];
+// Vendor Purchase Bills & Operational Expenses Catalog (Breakage & Expiry + Sales Return vouchers)
+let appVendorBills = (typeof REAL_VENDOR_BILLS !== 'undefined' && Array.isArray(REAL_VENDOR_BILLS))
+  ? JSON.parse(JSON.stringify(REAL_VENDOR_BILLS))
+  : [];
 
-// Initial Canara Bank Statement Sheets
-const CANARA_SHEETS = [
-  {
-    monthId: '2026-09',
-    label: 'September 2026',
-    fileName: 'September-2026.xlsx',
-    uploadedOn: '19 Sept 2026',
-    creditsCount: 148,
-    debitsCount: 92,
-    records: [
-      {
-        id: 'CR-202609-01',
-        date: '19 Sept 2026',
-        narration: 'UPI/RAZORPAY/ABC PHARMA/458923',
-        payer: 'ABC Pharma Ltd',
-        type: 'UPI',
-        bankRef: 'UPI 458923',
-        amount: 48500,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-02',
-        date: '18 Sept 2026',
-        narration: 'NEFT FROM HETERO HEALTHCARE',
-        payer: 'Hetero Healthcare',
-        type: 'NEFT',
-        bankRef: 'NEFT N123456789',
-        amount: 125000,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-03',
-        date: '17 Sept 2026',
-        narration: 'RTGS/ZYDUS LIFESCIENCES LTD',
-        payer: 'Zydus Lifesciences',
-        type: 'RTGS',
-        bankRef: 'RTGS R987654321',
-        amount: 75000,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-04',
-        date: '16 Sept 2026',
-        narration: 'CHEQUE DEP - 008921 - SUN PHARMA',
-        payer: 'Sun Pharma',
-        type: 'CHQ',
-        bankRef: 'CHEQUE 008921',
-        amount: 248300,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-05',
-        date: '16 Sept 2026',
-        narration: 'UPI/PHONEPE/OM SAI MEDICALS',
-        payer: 'Om Sai Medicals',
-        type: 'UPI',
-        bankRef: 'UPI 9928103',
-        amount: 31400,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'INV-2026-0032',
-          guestName: 'Om Sai Medicals',
-          mappedAt: '16 Sep 2026 04:30 PM',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'CR-202609-06',
-        date: '18 Sep 2026',
-        narration: 'NEFT-AXISP00291039821-INFOSYS LTD-IFIMED SUPPLIES',
-        payer: 'Infosys Ltd (Health Center)',
-        type: 'NEFT',
-        bankRef: 'AXISP00291039821',
-        amount: 245000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'INV-KAP-4819',
-          guestName: 'Infosys Ltd (Health Center)',
-          mappedAt: '18 Sep 2026 11:30 AM',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'CR-202609-07',
-        date: '17 Sep 2026',
-        narration: 'RTGS/BARBR520260917001829/MEHTA HEALTHCARE/TENDER ADV',
-        payer: 'Mehta Healthcare Network',
-        type: 'RTGS',
-        bankRef: 'RTGS-BARBR520260917',
-        amount: 500000,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-08',
-        date: '16 Sep 2026',
-        narration: 'CLG-CHQ DEPOSIT-CHQ NO 004819-VERMA CONSULTANCY',
-        payer: 'Verma Consultancy',
-        type: 'CHQ',
-        bankRef: 'CHQ-004819',
-        amount: 65000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'INV-KAP-4822',
-          guestName: 'Verma Consultancy',
-          mappedAt: '16 Sep 2026 04:15 PM',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'CR-202609-09',
-        date: '16 Sep 2026',
-        narration: 'IMPS/P2A/62611892019/SUNITA AGARWAL/MEDICINE ADV',
-        payer: 'Sunita Agarwal',
-        type: 'IMPS',
-        bankRef: 'IMPS-62611892019',
-        amount: 18000,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'CR-202609-10',
-        date: '15 Sep 2026',
-        narration: 'UPI/CR/625902819201/DR AMIT PATEL/DERMA OINTMENTS',
-        payer: 'Dr. Amit Patel',
-        type: 'UPI',
-        bankRef: 'UPI-625902819201',
-        amount: 12500,
-        status: 'unmapped',
-        mapping: null
-      }
-    ],
-    debitRecords: [
-      {
-        id: 'DR-202609-01',
-        date: '18 Sep 2026',
-        narration: 'NEFT/BARB00291/BHARAT CHEMICAL SYNTHETICS/API-RM-49',
-        payer: 'Bharat Chemical Synthetics Ltd',
-        type: 'NEFT',
-        bankRef: 'NEFT N91823019',
-        amount: 180000,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'DR-202609-02',
-        date: '17 Sep 2026',
-        narration: 'RTGS/HDFC001928/OMEGA PACKAGING/BLISTER FOIL',
-        payer: 'Omega Packaging & Cartons',
-        type: 'RTGS',
-        bankRef: 'RTGS R82910381',
-        amount: 42500,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'DR-202609-03',
-        date: '16 Sep 2026',
-        narration: 'UPI/BLUEDART LOGISTICS/COLD CHAIN EXP',
-        payer: 'BlueDart Express Logistics',
-        type: 'UPI',
-        bankRef: 'UPI 8819203',
-        amount: 16800,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'BILL-2026-075',
-          billNo: 'BILL-2026-075',
-          guestName: 'BlueDart Express Logistics',
-          vendorName: 'BlueDart Express Logistics',
-          mappedAt: '16 Sep 2026 05:10 PM',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'DR-202609-04',
-        date: '15 Sep 2026',
-        narration: 'BILLPAY/TORRENT POWER/PLANT ENERGY SEP',
-        payer: 'Torrent Power Utilities',
-        type: 'NEFT',
-        bankRef: 'NEFT N48102931',
-        amount: 64200,
-        status: 'unmapped',
-        mapping: null
-      },
-      {
-        id: 'DR-202609-05',
-        date: '14 Sep 2026',
-        narration: 'RTGS/SHREE LOGISTICS/WH LEASE SEP',
-        payer: 'Shree Logistics Warehousing',
-        type: 'RTGS',
-        bankRef: 'RTGS R11928374',
-        amount: 85000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'BILL-2026-068',
-          billNo: 'BILL-2026-068',
-          guestName: 'Shree Logistics Warehousing',
-          vendorName: 'Shree Logistics Warehousing',
-          mappedAt: '14 Sep 2026 02:45 PM',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'DR-202609-06',
-        date: '14 Sep 2026',
-        narration: 'CHQ 001928 - DR REDDYS LAB TESTING',
-        payer: 'Dr. Reddy Labs Testing',
-        type: 'CHQ',
-        bankRef: 'CHQ-001928',
-        amount: 35000,
-        status: 'unmapped',
-        mapping: null
-      }
-    ]
-  },
-  {
-    monthId: '2026-08',
-    label: 'August 2026',
-    fileName: 'August-2026.xlsx',
-    uploadedOn: '21 Aug 2026',
-    creditsCount: 132,
-    debitsCount: 87,
-    records: [
-      {
-        id: 'CR-202608-01',
-        date: '28 Aug 2026',
-        narration: 'RTGS-BARBR520260828001-KAPILA HOSPITAL SUPPLIES',
-        payer: 'Kapila Hospital Network',
-        type: 'RTGS',
-        bankRef: 'RTGS-BARBR520260828',
-        amount: 450000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'INV-AUG-102',
-          guestName: 'Kapila Hospital Network',
-          mappedAt: '28 Aug 2026',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'CR-202608-02',
-        date: '26 Aug 2026',
-        narration: 'UPI/CR/62489201823/VIJAY PHARMA/PYTM',
-        payer: 'Vijay Pharma',
-        type: 'UPI',
-        bankRef: 'UPI-62489201823',
-        amount: 38500,
-        status: 'unmapped',
-        mapping: null
-      }
-    ],
-    debitRecords: [
-      {
-        id: 'DR-202608-01',
-        date: '27 Aug 2026',
-        narration: 'RTGS/SIEMENS HEALTHINEERS/SPECTROMETRY AMC',
-        payer: 'Siemens Healthineers AMC',
-        type: 'RTGS',
-        bankRef: 'RTGS-SIEM-202608',
-        amount: 115000,
-        status: 'mapped',
-        mapping: {
-          billNo: 'BILL-2026-054',
-          invoiceNo: 'BILL-2026-054',
-          vendorName: 'Siemens Healthineers AMC',
-          guestName: 'Siemens Healthineers AMC',
-          mappedAt: '27 Aug 2026',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      },
-      {
-        id: 'DR-202608-02',
-        date: '24 Aug 2026',
-        narration: 'UPI/ASTRA BIO CLEAN/CLEANROOM SANITIZATION',
-        payer: 'Astra Bio-Clean Services',
-        type: 'UPI',
-        bankRef: 'UPI-ASTRA-8291',
-        amount: 22400,
-        status: 'unmapped',
-        mapping: null
-      }
-    ]
-  },
-  {
-    monthId: '2026-07',
-    label: 'July 2026',
-    fileName: 'July-2026.xlsx',
-    uploadedOn: '14 Aug 2026',
-    creditsCount: 126,
-    debitsCount: 81,
-    records: [
-      {
-        id: 'CR-202607-01',
-        date: '29 Jul 2026',
-        narration: 'NEFT-SBIN00291039-SHAH PHARMA DISTRIBUTORS',
-        payer: 'Shah Pharma Distributors',
-        type: 'NEFT',
-        bankRef: 'SBIN00291039',
-        amount: 220000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'BANQ-JUL-009',
-          guestName: 'Shah Pharma Distributors',
-          mappedAt: '29 Jul 2026',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      }
-    ]
-  },
-  {
-    monthId: '2026-06',
-    label: 'June 2026',
-    fileName: 'June-2026.xlsx',
-    uploadedOn: '07 Aug 2026',
-    creditsCount: 118,
-    debitsCount: 76,
-    records: [
-      {
-        id: 'CR-202606-01',
-        date: '25 Jun 2026',
-        narration: 'RTGS/HDFC00291823/GLOBAL LIFE SCIENCES',
-        payer: 'Global Life Sciences',
-        type: 'RTGS',
-        bankRef: 'HDFCR520260625',
-        amount: 340000,
-        status: 'mapped',
-        mapping: {
-          invoiceNo: 'INV-JUN-088',
-          guestName: 'Global Life Sciences',
-          mappedAt: '25 Jun 2026',
-          mappedBy: 'Boss (Accounts Controller)',
-          isNote: false
-        }
-      }
-    ]
-  }
-];
+// Statement Sheets
+const ICICI_SHEETS = (typeof REAL_CORPORATE_BANKS !== 'undefined' && REAL_CORPORATE_BANKS[0] && Array.isArray(REAL_CORPORATE_BANKS[0].sheets))
+  ? JSON.parse(JSON.stringify(REAL_CORPORATE_BANKS[0].sheets))
+  : [];
+const CANARA_SHEETS = ICICI_SHEETS; // backward compatibility
 
-// Corporate Bank Accounts Catalog (3 Demo Accounts for Client Presentation)
-const CORPORATE_BANKS = [
-  {
-    id: 'canara-4092',
-    name: 'Canara Bank',
-    type: 'Current A/c',
-    accNo: '••••4092',
-    fullAccNo: '0482201004092',
-    ifsc: 'CNRB0000482',
-    branch: 'Koramangala, Bengaluru',
-    sheets: JSON.parse(JSON.stringify(CANARA_SHEETS))
-  },
-  {
-    id: 'hdfc-1930',
-    name: 'HDFC Bank',
-    type: 'Current A/c',
-    accNo: '••••1930',
-    fullAccNo: '50200029101930',
-    ifsc: 'HDFC0000412',
-    branch: 'Indiranagar, Bengaluru',
-    sheets: [
+// Corporate Bank Accounts Catalog
+const CORPORATE_BANKS = (typeof REAL_CORPORATE_BANKS !== 'undefined' && Array.isArray(REAL_CORPORATE_BANKS))
+  ? JSON.parse(JSON.stringify(REAL_CORPORATE_BANKS))
+  : [
       {
-        monthId: '2026-09',
-        label: 'September 2026',
-        fileName: 'HDFC-Sept-2026.xlsx',
-        uploadedOn: '19 Sept 2026',
-        creditsCount: 94,
-        debitsCount: 42,
-        records: [
-          {
-            id: 'HDFC-202609-01',
-            date: '18 Sep 2026',
-            narration: 'NEFT-CR-HDFCN0029103-MANIPAL HOSPITALS',
-            payer: 'Manipal Hospitals',
-            type: 'NEFT',
-            bankRef: 'HDFCN002910389',
-            amount: 145000,
-            status: 'unmapped',
-            mapping: null
-          },
-          {
-            id: 'HDFC-202609-02',
-            date: '17 Sep 2026',
-            narration: 'RTGS-CR-ICICR520260917-APOLLO PHARMACY BULK',
-            payer: 'Apollo Pharmacy Ltd',
-            type: 'RTGS',
-            bankRef: 'ICICR52026091701',
-            amount: 325000,
-            status: 'mapped',
-            mapping: {
-              invoiceNo: 'INV-IFM-2026-019',
-              guestName: 'Apollo Pharmacy Ltd',
-              mappedAt: '17 Sep 2026 03:20 PM',
-              mappedBy: 'Boss (Accounts Controller)',
-              isNote: false
-            }
-          },
-          {
-            id: 'HDFC-202609-03',
-            date: '16 Sep 2026',
-            narration: 'UPI/CR/626019918231/BIOCON RESEARCH/PYTM',
-            payer: 'Biocon Research',
-            type: 'UPI',
-            bankRef: 'UPI-626019918231',
-            amount: 58000,
-            status: 'unmapped',
-            mapping: null
-          }
-        ],
-        debitRecords: [
-          {
-            id: 'HDFC-DR-202609-01',
-            date: '18 Sep 2026',
-            narration: 'NEFT-DR-HDFCN008819-THERMO FISHER LAB REAGENTS',
-            payer: 'Thermo Fisher Scientific',
-            type: 'NEFT',
-            bankRef: 'HDFCN00881920',
-            amount: 98000,
-            status: 'unmapped',
-            mapping: null
-          },
-          {
-            id: 'HDFC-DR-202609-02',
-            date: '16 Sep 2026',
-            narration: 'RTGS-DR-KOTAK00918-BENGALURU WAREHOUSE LEASE',
-            payer: 'Prestige Industrial Parks',
-            type: 'RTGS',
-            bankRef: 'KOTAKR520260916',
-            amount: 175000,
-            status: 'mapped',
-            mapping: {
-              billNo: 'BILL-HDFC-019',
-              invoiceNo: 'BILL-HDFC-019',
-              vendorName: 'Prestige Industrial Parks',
-              guestName: 'Prestige Industrial Parks',
-              mappedAt: '16 Sep 2026 04:10 PM',
-              mappedBy: 'Boss (Accounts Controller)',
-              isNote: false
-            }
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'sbi-8814',
-    name: 'State Bank of India',
-    type: 'Cash Credit A/c',
-    accNo: '••••8814',
-    fullAccNo: '38190029108814',
-    ifsc: 'SBIN0004819',
-    branch: 'MG Road Commercial, Bengaluru',
-    sheets: [
+        id: 'icici-3021',
+        name: 'ICICI Bank',
+        type: 'Current A/c',
+        accNo: '••••3021',
+        fullAccNo: '000205003021',
+        ifsc: 'ICIC0000002',
+        branch: 'Mysore Main Branch, Karnataka',
+        sheets: []
+      },
       {
-        monthId: '2026-09',
-        label: 'September 2026',
-        fileName: 'SBI-CC-Sept-2026.xlsx',
-        uploadedOn: '19 Sept 2026',
-        creditsCount: 65,
-        debitsCount: 38,
-        records: [
-          {
-            id: 'SBI-202609-01',
-            date: '18 Sep 2026',
-            narration: 'NEFT-SBIN0019283-CIPLA DISTRIBUTORS',
-            payer: 'Cipla Distributors',
-            type: 'NEFT',
-            bankRef: 'SBIN0019283719',
-            amount: 210000,
-            status: 'unmapped',
-            mapping: null
-          },
-          {
-            id: 'SBI-202609-02',
-            date: '15 Sep 2026',
-            narration: 'RTGS-SBIR520260915-FORTIS HEALTHCARE BATCH',
-            payer: 'Fortis Healthcare',
-            type: 'RTGS',
-            bankRef: 'SBIR520260915002',
-            amount: 480000,
-            status: 'mapped',
-            mapping: {
-              invoiceNo: 'INV-IFM-2026-028',
-              guestName: 'Cipla Distributors',
-              mappedAt: '15 Sep 2026 02:15 PM',
-              mappedBy: 'Boss (Accounts Controller)',
-              isNote: false
-            }
-          }
-        ],
-        debitRecords: [
-          {
-            id: 'SBI-DR-202609-01',
-            date: '17 Sep 2026',
-            narration: 'NEFT-DR-SBIN004819-BHARAT PETROLEUM GENERATOR DIESEL',
-            payer: 'Bharat Petroleum Corp Ltd',
-            type: 'NEFT',
-            bankRef: 'SBIN0048192018',
-            amount: 82000,
-            status: 'unmapped',
-            mapping: null
-          }
-        ]
+        id: 'axis-7419',
+        name: 'Axis Bank',
+        type: 'Current A/c',
+        accNo: '••••7419',
+        fullAccNo: '921020007419821',
+        ifsc: 'UTIB0000042',
+        branch: 'Saraswathipuram, Mysore',
+        sheets: []
+      },
+      {
+        id: 'kotak-8502',
+        name: 'Kotak Mahindra Bank',
+        type: 'Current A/c',
+        accNo: '••••8502',
+        fullAccNo: '711200988502',
+        ifsc: 'KKBK0000421',
+        branch: 'Devaraj Urs Road, Mysore',
+        sheets: []
       }
-    ]
-  }
-];
+    ];
 
 // Recent Desk Activity (for Dashboard feed)
-let recentActivities = [
-  { text: 'Linked INV-KAP-4819 (Infosys Ltd)', meta: 'Canara Bank Current A/c ••4092 · 18 Sep 2026' },
-  { text: 'Linked INV-IFM-2026-019 (Apollo Pharmacy Ltd)', meta: 'HDFC Bank Current A/c ••1930 · 17 Sep 2026' },
-  { text: 'Linked INV-2026-0032 (Om Sai Medicals)', meta: 'Canara Bank Current A/c ••4092 · 16 Sep 2026' }
-];
+let recentActivities = (typeof REAL_ACTIVITIES !== 'undefined' && Array.isArray(REAL_ACTIVITIES))
+  ? JSON.parse(JSON.stringify(REAL_ACTIVITIES))
+  : [];
 
 // Active State
 let currentActiveView = 'bank-statements'; // 'dashboard' | 'bank-statements'
 let activeMappingMode = 'credit'; // 'credit' (Inflow) | 'debit' (Outflow)
-let selectedBankId = 'canara-4092';
-let selectedMonthId = '2026-09';
+let selectedBankId = 'icici-3021';
+let selectedMonthId = '2026-07';
 let activeFilter = 'all'; // 'all' | 'unmapped' | 'mapped'
 let searchQuery = '';
 
@@ -700,6 +201,8 @@ const closeAddBankModalBtn = document.getElementById('closeAddBankModalBtn');
 const cancelAddBankBtn = document.getElementById('cancelAddBankBtn');
 const addBankForm = document.getElementById('addBankForm');
 const dashAddBankBtn = document.getElementById('dashAddBankBtn');
+const autoDetectBanksBtn = document.getElementById('autoDetectBanksBtn');
+const detectStatementsBtn = document.getElementById('detectStatementsBtn');
 
 // Global Search / Command Palette
 const globalSearchTrigger = document.getElementById('globalSearchTrigger');
@@ -886,19 +389,82 @@ function getActiveBank() {
 
 function getCurrentSheet() {
   const bank = getActiveBank();
-  return (bank && bank.sheets && bank.sheets.find(s => s.monthId === selectedMonthId)) || (bank && bank.sheets && bank.sheets[0]) || { records: [], debitRecords: [] };
+  if (!bank || !bank.sheets || bank.sheets.length === 0) {
+    return {
+      monthId: selectedMonthId || '2026-07',
+      label: 'No Statement',
+      fileName: 'No file uploaded',
+      uploadedOn: '—',
+      creditsCount: 0,
+      debitsCount: 0,
+      records: [],
+      debitRecords: []
+    };
+  }
+  return bank.sheets.find(s => s.monthId === selectedMonthId) || bank.sheets[0] || {
+    monthId: selectedMonthId || '2026-07',
+    label: 'No Statement',
+    fileName: 'No file uploaded',
+    uploadedOn: '—',
+    creditsCount: 0,
+    debitsCount: 0,
+    records: [],
+    debitRecords: []
+  };
 }
 
 function switchBank(bankId) {
   const bank = corporateBanks.find(b => b.id === bankId);
   if (!bank) return;
   selectedBankId = bankId;
-  selectedMonthId = (bank.sheets && bank.sheets[0]) ? bank.sheets[0].monthId : '2026-09';
+  selectedMonthId = (bank.sheets && bank.sheets[0]) ? bank.sheets[0].monthId : '2026-07';
   activeConfirmingRowId = null;
 
   if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
   renderAll();
   showToast(`Switched account to ${bank.name} (${bank.accNo})`);
+}
+
+async function autoDetectBankAccounts(interactive = true) {
+  try {
+    const res = await fetch('/api/detect-banks');
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
+      const data = await res.json();
+      if (data.success && data.accounts && data.accounts.length > 0) {
+        corporateBanks = data.accounts;
+        if (data.invoices && Array.isArray(data.invoices)) {
+          appInvoices = data.invoices;
+        }
+        if (data.bills && Array.isArray(data.bills)) {
+          appVendorBills = data.bills;
+        }
+        selectedBankId = corporateBanks[0].id;
+        selectedMonthId = (corporateBanks[0].sheets && corporateBanks[0].sheets[0]) ? corporateBanks[0].sheets[0].monthId : '2026-07';
+        activeConfirmingRowId = null;
+        if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
+        renderAll();
+        if (interactive) {
+          showToast(`⚡ Successfully detected & loaded ${data.accounts.length} bank accounts from statements!`);
+        }
+        return true;
+      }
+    }
+  } catch (err) {}
+
+  if (typeof REAL_CORPORATE_BANKS !== 'undefined' && Array.isArray(REAL_CORPORATE_BANKS)) {
+    corporateBanks = JSON.parse(JSON.stringify(REAL_CORPORATE_BANKS));
+    selectedBankId = corporateBanks[0].id;
+    selectedMonthId = (corporateBanks[0].sheets && corporateBanks[0].sheets[0]) ? corporateBanks[0].sheets[0].monthId : '2026-07';
+    activeConfirmingRowId = null;
+    if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
+    renderAll();
+    if (interactive) {
+      showToast(`⚡ Detected and loaded 3 corporate bank accounts from IFIMED statement files!`);
+    }
+    return true;
+  }
+  return false;
 }
 
 function promptDeleteBank(bankId, event) {
@@ -959,7 +525,7 @@ function confirmDeleteBank() {
   if (wasActive) {
     selectedBankId = corporateBanks[0].id;
     const newBank = corporateBanks[0];
-    selectedMonthId = (newBank.sheets && newBank.sheets[0]) ? newBank.sheets[0].monthId : '2026-09';
+    selectedMonthId = (newBank.sheets && newBank.sheets[0]) ? newBank.sheets[0].monthId : '2026-07';
     activeConfirmingRowId = null;
   }
 
@@ -1030,6 +596,17 @@ function renderStatementFilesTable() {
   statementFilesTableBody.innerHTML = '';
 
   const bank = getActiveBank();
+  if (!bank || !bank.sheets || bank.sheets.length === 0) {
+    statementFilesTableBody.innerHTML = `
+      <tr>
+        <td colspan="4" style="text-align: center; padding: 28px 16px; color: var(--text-tertiary); font-size: 13px;">
+          No statement sheets uploaded yet. Upload a CSV file above to create your first statement.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
   bank.sheets.forEach(sheet => {
     const isCurrent = sheet.monthId === selectedMonthId;
     const tr = document.createElement('tr');
@@ -1047,8 +624,8 @@ function renderStatementFilesTable() {
         </div>
       </td>
       <td>${sheet.creditsCount || (sheet.records ? sheet.records.length : 0)} credits</td>
-      <td>${sheet.debitsCount || 0} debits</td>
-      <td>${escapeHtml(sheet.uploadedOn || '19 Sept 2026')}</td>
+      <td>${sheet.debitsCount || (sheet.debitRecords ? sheet.debitRecords.length : 0)} debits</td>
+      <td>${escapeHtml(sheet.uploadedOn || '—')}</td>
     `;
 
     tr.addEventListener('click', () => {
@@ -1111,18 +688,18 @@ function switchMappingMode(mode) {
     exportCsvBtnText.textContent = mode === 'credit' ? 'Export CSV' : 'Export Reconciled Debits';
   }
 
-  // Update KPI Headers
+  // Update KPI Headers (Human-friendly Title Case)
   if (kpiTotalHeader) {
-    kpiTotalHeader.textContent = mode === 'credit' ? 'TOTAL CREDITS · THIS MONTH' : 'TOTAL DEBITS · THIS MONTH';
+    kpiTotalHeader.textContent = mode === 'credit' ? 'Total Credits (This Month)' : 'Total Debits (This Month)';
   }
   if (kpiMappedHeader) {
-    kpiMappedHeader.textContent = mode === 'credit' ? 'MAPPED CREDITS' : 'MAPPED DEBITS';
+    kpiMappedHeader.textContent = mode === 'credit' ? 'Mapped Credits' : 'Mapped Debits';
   }
   if (kpiUnmappedHeader) {
-    kpiUnmappedHeader.textContent = mode === 'credit' ? 'UNMAPPED CREDITS' : 'UNMAPPED DEBITS';
+    kpiUnmappedHeader.textContent = mode === 'credit' ? 'Unmapped Credits' : 'Unmapped Debits';
   }
   if (kpiTrendHeader) {
-    kpiTrendHeader.textContent = mode === 'credit' ? 'CREDIT TREND' : 'DEBIT TREND';
+    kpiTrendHeader.textContent = mode === 'credit' ? 'Credit Trend' : 'Debit Trend';
   }
   if (kpiTotalIcon) {
     kpiTotalIcon.className = `kpi-icon-circle ${mode === 'credit' ? 'icon-circle-blue' : 'icon-circle-rose'}`;
@@ -1255,7 +832,11 @@ function renderCreditTable() {
       const docNo = row.mapping.billNo || row.mapping.invoiceNo;
       const tagBadgeClass = isDebit ? 'mapped-tag-badge badge-bill' : 'mapped-tag-badge';
       mappingCellHtml = `
-        <div class="${tagBadgeClass}">
+        <div class="${tagBadgeClass}" title="Linked to system record">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+          </svg>
           <span>${escapeHtml(docNo)}</span>
         </div>
       `;
@@ -1267,8 +848,15 @@ function renderCreditTable() {
       const placeholder = isDebit ? 'Bill / Voucher #' : 'Invoice #';
       mappingCellHtml = `
         <div class="cell-input-mapping">
-          <input type="text" class="mapping-inv-input" placeholder="${placeholder}" id="input-inv-${row.id}" autocomplete="off">
-          <ul class="suggestions-dropdown" id="dropdown-${row.id}" style="display: none;"></ul>
+          <div class="mapping-search-field">
+            <svg class="mapping-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" class="mapping-inv-input" placeholder="${placeholder}" id="input-inv-${row.id}" autocomplete="off" aria-label="Search and select ${placeholder}" role="combobox" aria-expanded="false" aria-autocomplete="list">
+            <span class="mapping-lookup-hint">Lookup ▾</span>
+          </div>
+          <ul class="suggestions-dropdown" id="dropdown-${row.id}" style="display: none;" role="listbox"></ul>
         </div>
       `;
     }
@@ -1338,7 +926,13 @@ function renderCreditTable() {
                   <span class="suggestion-inv-num text-debit">${escapeHtml(m.billNo)}</span>
                   <span class="suggestion-expected-amount font-bold amount-debit">${formatINR(m.amount)}</span>
                 </div>
-                <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
+                <div class="suggestion-payer-name">${escapeHtml(m.vendorName)}</div>
+                <div class="suggestion-sub-info">
+                  <span class="suggestion-date">${escapeHtml(m.date || '')}</span>
+                  <span class="sub-sep">•</span>
+                  <span class="suggestion-cat">${escapeHtml(m.category || 'Claim Voucher')}</span>
+                  ${m.gstin ? `<span class="sub-sep">•</span><span class="suggestion-gstin font-mono">GSTIN: ${escapeHtml(m.gstin)}</span>` : ''}
+                </div>
               `;
 
               const handleSelect = (e) => {
@@ -1357,6 +951,7 @@ function renderCreditTable() {
               if (!term) return true;
               return b.invoiceNo.toLowerCase().includes(term) ||
                      b.guestName.toLowerCase().includes(term) ||
+                     (b.gstin && b.gstin.toLowerCase().includes(term)) ||
                      (b.category && b.category.toLowerCase().includes(term));
             }).slice(0, 6);
 
@@ -1378,7 +973,13 @@ function renderCreditTable() {
                   <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
                   <span class="suggestion-expected-amount font-bold">${formatINR(m.amount)}</span>
                 </div>
-                <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
+                <div class="suggestion-payer-name">${escapeHtml(m.guestName)}</div>
+                <div class="suggestion-sub-info">
+                  <span class="suggestion-date">${escapeHtml(m.date || '')}</span>
+                  <span class="sub-sep">•</span>
+                  <span class="suggestion-cat">${escapeHtml(m.category || 'Regular B2B Tax Invoice')}</span>
+                  ${m.gstin ? `<span class="sub-sep">•</span><span class="suggestion-gstin font-mono">GSTIN: ${escapeHtml(m.gstin)}</span>` : ''}
+                </div>
               `;
 
               const handleSelect = (e) => {
@@ -1549,7 +1150,13 @@ function renderCreditTable() {
                 <span class="suggestion-inv-num text-debit">${escapeHtml(m.billNo)}</span>
                 <span class="suggestion-expected-amount font-bold amount-debit">${formatINR(m.amount)}</span>
               </div>
-              <div class="suggestion-payer-name">${escapeHtml(m.vendorName)} · ${escapeHtml(m.category || 'Expense')}</div>
+              <div class="suggestion-payer-name">${escapeHtml(m.vendorName)}</div>
+              <div class="suggestion-sub-info">
+                <span class="suggestion-date">${escapeHtml(m.date || '')}</span>
+                <span class="sub-sep">•</span>
+                <span class="suggestion-cat">${escapeHtml(m.category || 'Claim Voucher')}</span>
+                ${m.gstin ? `<span class="sub-sep">•</span><span class="suggestion-gstin font-mono">GSTIN: ${escapeHtml(m.gstin)}</span>` : ''}
+              </div>
             `;
 
             const handleDrawerSelect = (e) => {
@@ -1570,6 +1177,7 @@ function renderCreditTable() {
             if (!term) return true;
             return b.invoiceNo.toLowerCase().includes(term) ||
                    b.guestName.toLowerCase().includes(term) ||
+                   (b.gstin && b.gstin.toLowerCase().includes(term)) ||
                    (b.category && b.category.toLowerCase().includes(term));
           }).slice(0, 6);
 
@@ -1591,7 +1199,13 @@ function renderCreditTable() {
                 <span class="suggestion-inv-num">${escapeHtml(m.invoiceNo)}</span>
                 <span class="suggestion-expected-amount font-bold">${formatINR(m.amount)}</span>
               </div>
-              <div class="suggestion-payer-name">${escapeHtml(m.guestName)} · ${escapeHtml(m.category)}</div>
+              <div class="suggestion-payer-name">${escapeHtml(m.guestName)}</div>
+              <div class="suggestion-sub-info">
+                <span class="suggestion-date">${escapeHtml(m.date || '')}</span>
+                <span class="sub-sep">•</span>
+                <span class="suggestion-cat">${escapeHtml(m.category || 'Regular B2B Tax Invoice')}</span>
+                ${m.gstin ? `<span class="sub-sep">•</span><span class="suggestion-gstin font-mono">GSTIN: ${escapeHtml(m.gstin)}</span>` : ''}
+              </div>
             `;
 
             const handleDrawerSelect = (e) => {
@@ -1715,12 +1329,145 @@ function executeUnlink() {
 }
 
 // =============================================================================
+// 7b. Auto-Match All Open Transactions with Statement Data
+// =============================================================================
+
+function autoMatchAllStatementData(interactive = true) {
+  const currentSheet = getCurrentSheet();
+  if (!currentSheet) return;
+
+  const invMap = new Map();
+  appInvoices.forEach(i => invMap.set(i.invoiceNo.toLowerCase(), i));
+  const billMap = new Map();
+  appVendorBills.forEach(b => billMap.set(b.billNo.toLowerCase(), b));
+
+  let matchedCredits = 0;
+  (currentSheet.records || []).forEach(r => {
+    if (r.status !== 'mapped') {
+      const match = (r.narration && r.narration.match(/IFB\d+/i)) || 
+                    (r.narration && r.narration.match(/CNB?\d+/i)) ||
+                    (r.bankRef && r.bankRef.match(/IFB\d+/i)) ||
+                    (r.bankRef && r.bankRef.match(/CNB?\d+/i));
+      const code = match ? match[0].toLowerCase() : null;
+      const doc = code ? (invMap.get(code) || billMap.get(code)) : null;
+
+      if (doc) {
+        r.status = 'mapped';
+        r.mapping = {
+          invoiceNo: doc.invoiceNo || doc.billNo,
+          billNo: doc.billNo || doc.invoiceNo,
+          guestName: doc.guestName || doc.vendorName,
+          vendorName: doc.vendorName || doc.guestName,
+          mappedAt: (r.date || '31 Jul 2026') + ' 04:30 PM',
+          mappedBy: 'System (Reconciled from Statement)',
+          isNote: false
+        };
+        matchedCredits++;
+      } else {
+        const amtMatch = appInvoices.find(d => Math.abs(d.amount - r.amount) < 0.01);
+        if (amtMatch) {
+          r.status = 'mapped';
+          r.mapping = {
+            invoiceNo: amtMatch.invoiceNo,
+            billNo: amtMatch.invoiceNo,
+            guestName: amtMatch.guestName,
+            vendorName: amtMatch.guestName,
+            mappedAt: (r.date || '31 Jul 2026') + ' 04:30 PM',
+            mappedBy: 'System (Auto-Matched by Amount)',
+            isNote: false
+          };
+          matchedCredits++;
+        }
+      }
+    }
+  });
+
+  let matchedDebits = 0;
+  (currentSheet.debitRecords || []).forEach(r => {
+    if (r.status !== 'mapped') {
+      const match = (r.narration && r.narration.match(/CNB?\d+/i)) ||
+                    (r.bankRef && r.bankRef.match(/CNB?\d+/i)) ||
+                    (r.narration && r.narration.match(/IFB\d+/i)) ||
+                    (r.bankRef && r.bankRef.match(/IFB\d+/i));
+      const code = match ? match[0].toLowerCase() : null;
+      const doc = code ? (billMap.get(code) || invMap.get(code)) : null;
+
+      if (doc) {
+        r.status = 'mapped';
+        r.mapping = {
+          billNo: doc.billNo || doc.invoiceNo,
+          invoiceNo: doc.invoiceNo || doc.billNo,
+          vendorName: doc.vendorName || doc.guestName,
+          guestName: doc.guestName || doc.vendorName,
+          mappedAt: (r.date || '31 Jul 2026') + ' 05:15 PM',
+          mappedBy: 'System (Reconciled from Statement)',
+          isNote: false
+        };
+        matchedDebits++;
+      } else {
+        const amtMatch = appVendorBills.find(d => Math.abs(d.amount - r.amount) < 0.01);
+        if (amtMatch) {
+          r.status = 'mapped';
+          r.mapping = {
+            billNo: amtMatch.billNo,
+            invoiceNo: amtMatch.billNo,
+            vendorName: amtMatch.vendorName,
+            guestName: amtMatch.vendorName,
+            mappedAt: (r.date || '31 Jul 2026') + ' 05:15 PM',
+            mappedBy: 'System (Auto-Matched by Amount)',
+            isNote: false
+          };
+          matchedDebits++;
+        }
+      }
+    }
+  });
+
+  const totalMatched = matchedCredits + matchedDebits;
+  renderAll();
+
+  if (interactive) {
+    if (totalMatched > 0) {
+      showToast(`⚡ Auto-matched & reconciled ${totalMatched} statement record${totalMatched !== 1 ? 's' : ''}!`);
+    } else {
+      showToast('All statement records are already reconciled according to the statement files.');
+    }
+  }
+}
+
+// =============================================================================
 // 8. Bank Statement CSV Upload with Strict Deduplication (Credits & Debits)
 // =============================================================================
 
 function processBankStatementCsv(csvText) {
-  const currentSheet = getCurrentSheet();
+  const bank = getActiveBank();
+  if (!bank) return;
+  if (!bank.sheets) bank.sheets = [];
+
   const isDebit = activeMappingMode === 'debit';
+  let currentSheet;
+
+  if (bank.sheets.length === 0) {
+    const now = new Date();
+    const monthName = now.toLocaleString('en-US', { month: 'long' });
+    const year = now.getFullYear();
+    const monthId = `${year}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    currentSheet = {
+      monthId: monthId,
+      label: `${monthName} ${year}`,
+      fileName: `${bank.name.replace(/\s+/g, '_')}_${monthName}_${year}.csv`,
+      uploadedOn: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      creditsCount: 0,
+      debitsCount: 0,
+      records: [],
+      debitRecords: []
+    };
+    bank.sheets.push(currentSheet);
+    selectedMonthId = monthId;
+  } else {
+    currentSheet = getCurrentSheet();
+  }
+
   if (!currentSheet.records) currentSheet.records = [];
   if (!currentSheet.debitRecords) currentSheet.debitRecords = [];
 
@@ -1768,7 +1515,9 @@ function processBankStatementCsv(csvText) {
     }
   }
 
-  const bank = getActiveBank();
+  currentSheet.creditsCount = currentSheet.records.length;
+  currentSheet.debitsCount = currentSheet.debitRecords.length;
+
   recentActivities.unshift({
     text: `Imported statement (${added} ${isDebit ? 'debits' : 'credits'} added)`,
     meta: `${bank.name} ${bank.accNo} · Just now`
@@ -1794,14 +1543,28 @@ function renderInvoicesCatalogModal() {
            (inv.category && inv.category.toLowerCase().includes(q));
   });
 
+  if (filtered.length === 0) {
+    catalogInvoicesTableBody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 32px 16px; color: var(--text-tertiary); font-size: 13px;">
+          No customer invoices in catalog. Add an invoice manually or upload a CSV.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
   filtered.forEach(inv => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong class="font-mono">${escapeHtml(inv.invoiceNo)}</strong></td>
-      <td>${escapeHtml(inv.guestName)}</td>
-      <td>${formatINR(inv.amount)}</td>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(inv.guestName)}</div>
+        ${inv.gstin ? `<div style="font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono);">GSTIN: ${escapeHtml(inv.gstin)}</div>` : ''}
+      </td>
+      <td class="font-mono font-bold">${formatINR(inv.amount)}</td>
       <td>${escapeHtml(inv.date || '—')}</td>
-      <td><span class="text-muted">${escapeHtml(inv.category || '—')}</span></td>
+      <td><span class="status-pill status-pill-mapped" style="font-size: 11px;">${escapeHtml(inv.category || 'Regular B2B')}</span></td>
     `;
     catalogInvoicesTableBody.appendChild(tr);
   });
@@ -1823,7 +1586,7 @@ function processInvoiceCsv(csvText) {
     const customer = cols[1];
     const amount = parseFloat(cols[2]) || 0;
     const date = cols[3] || '19 Sep 2026';
-    const category = cols[4] || 'Bulk Supply';
+    const category = cols[4] || 'Regular B2B Tax Invoice';
 
     if (!appInvoices.some(inv => inv.invoiceNo.toLowerCase() === invoiceNo.toLowerCase())) {
       appInvoices.unshift({
@@ -1850,17 +1613,32 @@ function renderVendorBillsCatalogModal() {
     if (!q) return true;
     return bill.billNo.toLowerCase().includes(q) ||
            bill.vendorName.toLowerCase().includes(q) ||
+           (bill.gstin && bill.gstin.toLowerCase().includes(q)) ||
            (bill.category && bill.category.toLowerCase().includes(q));
   });
+
+  if (filtered.length === 0) {
+    catalogBillsTableBody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 32px 16px; color: var(--text-tertiary); font-size: 13px;">
+          No vendor bills in catalog. Add a vendor bill manually or upload a CSV.
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
   filtered.forEach(bill => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong class="font-mono text-debit">${escapeHtml(bill.billNo)}</strong></td>
-      <td>${escapeHtml(bill.vendorName)}</td>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(bill.vendorName)}</div>
+        ${bill.gstin ? `<div style="font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono);">GSTIN: ${escapeHtml(bill.gstin)}</div>` : ''}
+      </td>
       <td class="font-bold text-debit">${formatINR(bill.amount)}</td>
       <td>${escapeHtml(bill.date || '—')}</td>
-      <td><span class="text-muted">${escapeHtml(bill.category || '—')}</span></td>
+      <td><span class="status-pill status-pill-noted" style="font-size: 11px;">${escapeHtml(bill.category || 'Claim Voucher')}</span></td>
     `;
     catalogBillsTableBody.appendChild(tr);
   });
@@ -1905,7 +1683,35 @@ function processVendorBillCsv(csvText) {
 // =============================================================================
 
 function renderDashboardView() {
-  if (dashTotalInvoicesCount) dashTotalInvoicesCount.textContent = `${appInvoices.length} Invoices`;
+  const dashInflowEl = document.getElementById('dashCorporateInflow');
+  const dashInflowSubEl = document.getElementById('dashCorporateInflowSub');
+  const dashReconRateEl = document.getElementById('dashReconRate');
+  const dashReconRateSubEl = document.getElementById('dashReconRateSub');
+  const dashInvoicesCountEl = document.getElementById('dashTotalInvoicesCount');
+
+  let allBanksInflow = 0;
+  let totalAllCredits = 0;
+  let totalMappedCredits = 0;
+
+  corporateBanks.forEach(b => {
+    (b.sheets || []).forEach(s => {
+      (s.records || []).forEach(r => {
+        allBanksInflow += (r.amount || 0);
+        totalAllCredits++;
+        if (r.status === 'mapped') {
+          totalMappedCredits++;
+        }
+      });
+    });
+  });
+
+  if (dashInflowEl) dashInflowEl.textContent = formatINR(allBanksInflow);
+  if (dashInflowSubEl) dashInflowSubEl.textContent = `Across ${corporateBanks.length} corporate bank desk${corporateBanks.length !== 1 ? 's' : ''}`;
+  const ratePct = totalAllCredits > 0 ? ((totalMappedCredits / totalAllCredits) * 100).toFixed(1) : '0.0';
+  if (dashReconRateEl) dashReconRateEl.textContent = `${ratePct}%`;
+  if (dashReconRateSubEl) dashReconRateSubEl.textContent = `${totalMappedCredits} of ${totalAllCredits} transactions linked`;
+
+  if (dashInvoicesCountEl) dashInvoicesCountEl.textContent = `${appInvoices.length} Invoices`;
 
   const dashBankList = document.getElementById('dashboardBankList');
   if (dashBankList) {
@@ -1915,8 +1721,8 @@ function renderDashboardView() {
     corporateBanks.forEach(b => {
       const isSelected = b.id === selectedBankId;
       const activeSheet = (b.sheets && b.sheets[0]) ? b.sheets[0] : { records: [], debitRecords: [] };
-      const totalInflow = (activeSheet.records || []).reduce((acc, r) => acc + r.amount, 0);
-      const totalOutflow = (activeSheet.debitRecords || []).reduce((acc, r) => acc + r.amount, 0);
+      const totalInflow = (activeSheet.records || []).reduce((acc, r) => acc + (r.amount || 0), 0);
+      const totalOutflow = (activeSheet.debitRecords || []).reduce((acc, r) => acc + (r.amount || 0), 0);
       const mappedCredits = (activeSheet.records || []).filter(r => r.status === 'mapped').length;
       const totalCredits = (activeSheet.records || []).length;
       const pct = totalCredits > 0 ? Math.round((mappedCredits / totalCredits) * 100) : 0;
@@ -1970,18 +1776,26 @@ function renderDashboardView() {
   const dashFeed = document.getElementById('dashboardActivityFeed');
   if (dashFeed) {
     dashFeed.innerHTML = '';
-    recentActivities.slice(0, 5).forEach(entry => {
-      const item = document.createElement('div');
-      item.className = 'activity-feed-item';
-      item.innerHTML = `
-        <span class="activity-icon-bullet"></span>
-        <div style="flex: 1;">
-          <div style="font-size: 12.5px; font-weight: 600; color: var(--text-primary);">${escapeHtml(entry.text)}</div>
-          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(entry.meta)}</div>
+    if (recentActivities.length === 0) {
+      dashFeed.innerHTML = `
+        <div style="text-align: center; padding: 24px 12px; color: var(--text-tertiary); font-size: 13px;">
+          No recent reconciliation activity recorded.
         </div>
       `;
-      dashFeed.appendChild(item);
-    });
+    } else {
+      recentActivities.slice(0, 5).forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'activity-feed-item';
+        item.innerHTML = `
+          <span class="activity-icon-bullet"></span>
+          <div style="flex: 1;">
+            <div style="font-size: 12.5px; font-weight: 600; color: var(--text-primary);">${escapeHtml(entry.text)}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(entry.meta)}</div>
+          </div>
+        `;
+        dashFeed.appendChild(item);
+      });
+    }
   }
 }
 
@@ -2060,12 +1874,12 @@ function renderCommandPaletteResults(term) {
 // =============================================================================
 
 const TREND_MONTHS = [
-  { monthId: '2026-04', label: 'April 2026', shortName: 'Apr', defaultInflow: 1640000, credits: 78 },
-  { monthId: '2026-05', label: 'May 2026', shortName: 'May', defaultInflow: 2120000, credits: 96 },
-  { monthId: '2026-06', label: 'June 2026', shortName: 'Jun', defaultInflow: 2580000, credits: 118 },
-  { monthId: '2026-07', label: 'July 2026', shortName: 'Jul', defaultInflow: 2850000, credits: 126 },
-  { monthId: '2026-08', label: 'August 2026', shortName: 'Aug', defaultInflow: 2410000, credits: 132 },
-  { monthId: '2026-09', label: 'September 2026', shortName: 'Sep', defaultInflow: 3383500, credits: 148 }
+  { monthId: '2026-04', label: 'April 2026', shortName: 'Apr' },
+  { monthId: '2026-05', label: 'May 2026', shortName: 'May' },
+  { monthId: '2026-06', label: 'June 2026', shortName: 'Jun' },
+  { monthId: '2026-07', label: 'July 2026', shortName: 'Jul' },
+  { monthId: '2026-08', label: 'August 2026', shortName: 'Aug' },
+  { monthId: '2026-09', label: 'September 2026', shortName: 'Sep' }
 ];
 
 function renderCreditTrendChart() {
@@ -2075,24 +1889,15 @@ function renderCreditTrendChart() {
   const bank = getActiveBank();
   const isDebit = activeMappingMode === 'debit';
 
-  // Compute live monthly volumes for active bank and active mode
+  // Compute live monthly volumes for active bank and active mode (no synthetic dummy values)
   const data = TREND_MONTHS.map(m => {
-    const sheet = bank.sheets ? bank.sheets.find(s => s.monthId === m.monthId) : null;
+    const sheet = (bank && bank.sheets) ? bank.sheets.find(s => s.monthId === m.monthId) : null;
     let total = 0;
     let count = 0;
     if (sheet) {
       const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
-      if (records.length > 0) {
-        total = records.reduce((acc, r) => acc + r.amount, 0);
-        count = records.length;
-      } else {
-        const estCount = isDebit ? (sheet.debitsCount || Math.round(m.credits * 0.6)) : (sheet.creditsCount || m.credits);
-        total = estCount * (isDebit ? 16500 : 22000);
-        count = estCount;
-      }
-    } else {
-      total = isDebit ? Math.round(m.defaultInflow * 0.6) : m.defaultInflow;
-      count = isDebit ? Math.round(m.credits * 0.6) : m.credits;
+      total = records.reduce((acc, r) => acc + (r.amount || 0), 0);
+      count = records.length;
     }
     return {
       ...m,
@@ -2101,15 +1906,15 @@ function renderCreditTrendChart() {
     };
   });
 
-  const maxTotal = Math.max(...data.map(d => d.total), 1);
+  const maxTotal = Math.max(...data.map(d => d.total), 0);
 
   data.forEach(d => {
     const isCurrent = d.monthId === selectedMonthId;
-    const heightPct = Math.max(24, Math.round((d.total / maxTotal) * 95));
+    const heightPct = maxTotal > 0 ? Math.max(8, Math.round((d.total / maxTotal) * 95)) : 8;
 
     const col = document.createElement('div');
     col.className = `chart-col ${isCurrent ? 'active' : ''}`;
-    col.title = `${d.label} (${isDebit ? 'Debits' : 'Credits'}): ${formatINR(d.total)} (${d.count} transactions) · Click to view`;
+    col.title = `${d.label} (${isDebit ? 'Debits' : 'Credits'}): ${formatINR(d.total)} (${d.count} transactions)`;
 
     col.innerHTML = `
       <div class="chart-bar ${isCurrent ? 'bar-active' : ''} ${isDebit ? 'bar-debit' : ''}" style="height: ${heightPct}%;"></div>
@@ -2117,49 +1922,15 @@ function renderCreditTrendChart() {
     `;
 
     col.addEventListener('click', () => {
-      let sheet = bank.sheets.find(s => s.monthId === d.monthId);
-      if (!sheet) {
-        sheet = {
-          monthId: d.monthId,
-          label: d.label,
-          fileName: `${bank.name.replace(/\s+/g, '_')}_${d.shortName}_2026.xlsx`,
-          uploadedOn: `15 ${d.shortName} 2026`,
-          creditsCount: d.count,
-          debitsCount: Math.round(d.count * 0.6),
-          records: [
-            {
-              id: `CR-${d.monthId}-01`,
-              date: `18 ${d.shortName} 2026`,
-              narration: `RTGS/BARB0029103/CONSIGNMENT #${d.shortName.toUpperCase()}`,
-              payer: 'Zydus Healthcare Ltd',
-              type: 'RTGS',
-              bankRef: `RTGS-${d.monthId}-01`,
-              amount: Math.round(d.total * 0.6),
-              status: 'unmapped',
-              mapping: null
-            }
-          ],
-          debitRecords: [
-            {
-              id: `DR-${d.monthId}-01`,
-              date: `17 ${d.shortName} 2026`,
-              narration: `NEFT/DR-SUPPLIES-${d.shortName.toUpperCase()}`,
-              payer: 'Bharat Chemical Synthetics Ltd',
-              type: 'NEFT',
-              bankRef: `NEFT-${d.monthId}-DR01`,
-              amount: Math.round(d.total * 0.5),
-              status: 'unmapped',
-              mapping: null
-            }
-          ]
-        };
-        bank.sheets.push(sheet);
+      const sheet = (bank && bank.sheets) ? bank.sheets.find(s => s.monthId === d.monthId) : null;
+      if (sheet) {
+        selectedMonthId = d.monthId;
+        activeConfirmingRowId = null;
+        renderAll();
+        showToast(`Switched to ${d.label} statement (${formatINR(d.total)})`);
+      } else {
+        showToast(`No statement uploaded for ${d.label}. Upload a CSV to add transactions.`, 'info');
       }
-
-      selectedMonthId = d.monthId;
-      activeConfirmingRowId = null;
-      renderAll();
-      showToast(`Switched to ${d.label} statement (${formatINR(d.total)})`);
     });
 
     miniBarChart.appendChild(col);
@@ -2233,6 +2004,20 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
       const open = bankDropdownMenu.style.display === 'block';
       bankDropdownMenu.style.display = open ? 'none' : 'block';
+    });
+  }
+
+  if (autoDetectBanksBtn) {
+    autoDetectBanksBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      autoDetectBankAccounts(true);
+    });
+  }
+
+  if (detectStatementsBtn) {
+    detectStatementsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      autoDetectBankAccounts(true);
     });
   }
 
@@ -2506,10 +2291,10 @@ document.addEventListener('DOMContentLoaded', () => {
         branch: 'Corporate Finance Branch',
         sheets: [
           {
-            monthId: '2026-09',
-            label: 'September 2026',
-            fileName: `${name.replace(/\s+/g, '_')}_Sept_2026.xlsx`,
-            uploadedOn: '19 Sept 2026',
+            monthId: '2026-07',
+            label: 'July 2026',
+            fileName: `${name.replace(/\s+/g, '_')}_July_2026.xlsx`,
+            uploadedOn: '31 Jul 2026',
             creditsCount: 0,
             debitsCount: 0,
             records: [],
@@ -2617,6 +2402,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 16b. Auto-Match All Records Toolbar Button
+  const autoMatchAllBtn = document.getElementById('autoMatchAllBtn');
+  if (autoMatchAllBtn) {
+    autoMatchAllBtn.addEventListener('click', () => {
+      autoMatchAllStatementData(true);
+    });
+  }
+
   // 17. Mobile Sidebar Drawer Toggle
   const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');
   const appSidebar = document.querySelector('.app-sidebar');
@@ -2641,8 +2434,10 @@ document.addEventListener('DOMContentLoaded', () => {
   renderAll();
 });
 
-// Expose bank deletion functions globally
+// Expose bank deletion, detection, and auto-match functions globally
 window.promptDeleteBank = promptDeleteBank;
 window.confirmDeleteBank = confirmDeleteBank;
 window.closeDeleteBankModal = closeDeleteBankModal;
+window.autoDetectBankAccounts = autoDetectBankAccounts;
+window.autoMatchAllStatementData = autoMatchAllStatementData;
 

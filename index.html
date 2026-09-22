@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.3">
+  <link rel="stylesheet" href="styles.css?v=2.5">
   <script>
     (function() {
       try {
@@ -147,7 +147,7 @@
             <div class="page-breadcrumb-sub">Dashboard / Bank statements</div>
             <h1 class="page-main-heading">Bank statements</h1>
             <p class="page-main-subheading" id="pageBankSubheading">
-              Turn incoming Canara Bank credits into explicit invoice links.
+              Turn incoming ICICI Bank credits into explicit invoice links.
             </p>
           </div>
 
@@ -157,7 +157,7 @@
             <div class="bank-selector-dropdown-wrap">
               <button type="button" class="bank-selector-pill" id="bankSelectorBtn" title="Switch Corporate Bank Account" aria-haspopup="true" aria-expanded="false">
                 <span class="bank-dot"></span>
-                <span class="bank-active-name" id="activeBankName">Canara Bank Current A/c ••4092</span>
+                <span class="bank-active-name" id="activeBankName">ICICI Bank Current A/c ••3021</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <path d="M6 9l6 6 6-6"/>
                 </svg>
@@ -167,9 +167,15 @@
               <div class="bank-dropdown-menu" id="bankDropdownMenu" style="display: none;">
                 <div class="dropdown-header">Select Corporate Bank Account</div>
                 <div class="bank-options-list" id="bankOptionsList">
-                  <!-- Populated dynamically by JS (3 Demo Accounts) -->
+                  <!-- Populated dynamically by JS -->
                 </div>
                 <div class="dropdown-divider"></div>
+                <button type="button" class="dropdown-action-btn" id="autoDetectBanksBtn" style="color: var(--ifimed-primary); font-weight: 600;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                  </svg>
+                  <span>Auto-Detect Accounts from Statements</span>
+                </button>
                 <button type="button" class="dropdown-action-btn" id="openAddBankModalBtn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -187,7 +193,7 @@
           <!-- Card 1: Total Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label" id="kpiTotalHeader">TOTAL CREDITS · THIS MONTH</span>
+              <span class="kpi-header-label" id="kpiTotalHeader">Total Credits (This Month)</span>
               <div class="kpi-icon-circle icon-circle-blue" id="kpiTotalIcon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <line x1="17" y1="7" x2="7" y2="17"></line>
@@ -196,15 +202,15 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiTotalAmount">₹ 33,83,500</div>
-              <div class="kpi-card-subtext"><span id="kpiTotalCount">86</span> bank transactions</div>
+              <div class="kpi-card-amount" id="kpiTotalAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span id="kpiTotalCount">0</span> bank transactions</div>
             </div>
           </div>
 
           <!-- Card 2: Mapped Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label" id="kpiMappedHeader">MAPPED CREDITS</span>
+              <span class="kpi-header-label" id="kpiMappedHeader">Mapped Credits</span>
               <div class="kpi-icon-circle icon-circle-green">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
@@ -212,15 +218,15 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiMappedAmount">₹ 18,42,300</div>
-              <div class="kpi-card-subtext"><span id="kpiMappedCount">24</span> transactions linked</div>
+              <div class="kpi-card-amount" id="kpiMappedAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span id="kpiMappedCount">0</span> transactions linked</div>
             </div>
           </div>
 
           <!-- Card 3: Unmapped Credits / Debits -->
           <div class="kpi-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label" id="kpiUnmappedHeader">UNMAPPED CREDITS</span>
+              <span class="kpi-header-label" id="kpiUnmappedHeader">Unmapped Credits</span>
               <div class="kpi-icon-circle icon-circle-amber">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -230,43 +236,20 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiUnmappedAmount">₹ 15,41,200</div>
-              <div class="kpi-card-subtext"><span id="kpiUnmappedCount">62</span> transactions need review</div>
+              <div class="kpi-card-amount" id="kpiUnmappedAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span id="kpiUnmappedCount">0</span> transactions need review</div>
             </div>
           </div>
 
           <!-- Card 4: Trend with 6-Month Mini Bar Chart -->
           <div class="kpi-card kpi-trend-card">
             <div class="kpi-card-header">
-              <span class="kpi-header-label" id="kpiTrendHeader">CREDIT TREND</span>
+              <span class="kpi-header-label" id="kpiTrendHeader">Credit Trend</span>
               <span class="trend-badge-sub">6 months</span>
             </div>
             <div class="kpi-trend-content">
               <div class="mini-bar-chart" id="miniBarChart">
-                <div class="chart-col">
-                  <div class="chart-bar" style="height: 52%;" title="Apr 2026: ₹16.4L"></div>
-                  <span class="chart-label">Apr</span>
-                </div>
-                <div class="chart-col">
-                  <div class="chart-bar" style="height: 64%;" title="May 2026: ₹21.2L"></div>
-                  <span class="chart-label">May</span>
-                </div>
-                <div class="chart-col">
-                  <div class="chart-bar" style="height: 72%;" title="Jun 2026: ₹25.8L"></div>
-                  <span class="chart-label">Jun</span>
-                </div>
-                <div class="chart-col">
-                  <div class="chart-bar" style="height: 80%;" title="Jul 2026: ₹28.5L"></div>
-                  <span class="chart-label">Jul</span>
-                </div>
-                <div class="chart-col">
-                  <div class="chart-bar" style="height: 68%;" title="Aug 2026: ₹24.1L"></div>
-                  <span class="chart-label">Aug</span>
-                </div>
-                <div class="chart-col active">
-                  <div class="chart-bar bar-active" style="height: 94%;" title="Sep 2026: ₹33.8L"></div>
-                  <span class="chart-label label-active">Sep</span>
-                </div>
+                <!-- Dynamically populated by JS from live bank statement data -->
               </div>
             </div>
           </div>
@@ -277,9 +260,15 @@
           <div class="card-header-bar">
             <div class="card-header-titles">
               <h2 class="card-title">Bank statement files</h2>
-              <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from Canara Bank</p>
+              <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from ICICI Bank</p>
             </div>
-            <div class="card-header-actions">
+            <div class="card-header-actions" style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline btn-sm" id="detectStatementsBtn" title="Detect accounts & statements from local statement files">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                </svg>
+                <span>Auto-Detect Accounts</span>
+              </button>
               <button type="button" class="btn btn-primary btn-sm" id="uploadCsvBtn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -297,14 +286,16 @@
             <div class="files-dropzone-box" id="dropZone" title="Click or drop a bank statement CSV here">
               <div class="dropzone-inner-content">
                 <div class="dropzone-icon-circle">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                   </svg>
                 </div>
-                <strong class="dropzone-cta-title">Upload CSV</strong>
-                <span class="dropzone-bank-hint" id="dropZoneBankName">Canara Bank CSV only</span>
+                <div class="dropzone-text-group">
+                  <strong class="dropzone-cta-title">Upload CSV</strong>
+                  <span class="dropzone-bank-hint" id="dropZoneBankName">ICICI Bank CSV only</span>
+                </div>
               </div>
             </div>
 
@@ -356,7 +347,7 @@
             <div class="card-header-titles">
               <div class="title-with-badge">
                 <h2 class="card-title" id="mappingCardTitle">Credit mapping</h2>
-                <span class="records-pill-badge" id="mappedCountDisplay">86 records</span>
+                <span class="records-pill-badge" id="mappedCountDisplay">0 records</span>
               </div>
               <p class="card-subtitle" id="mappingCardSubtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
             </div>
@@ -373,7 +364,7 @@
 
               <!-- Filter Dropdown Button -->
               <div class="filter-dropdown-container">
-                <button type="button" class="btn btn-filter" id="filterDropdownBtn">
+                <button type="button" class="btn btn-outline btn-sm" id="filterDropdownBtn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
                   </svg>
@@ -393,9 +384,27 @@
                 </div>
               </div>
 
+              <!-- Export Reconciled Action (Grouped with Table Controls) -->
+              <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span id="exportCsvBtnText">Export CSV</span>
+              </button>
+
+              <!-- Auto-Match All Records from Statement Files Action -->
+              <button type="button" class="btn btn-outline btn-sm" id="autoMatchAllBtn" title="Auto-match all open transactions with statement invoices/bills" style="color: var(--ifimed-primary); font-weight: 600;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                </svg>
+                <span>Auto-Match All</span>
+              </button>
+
               <!-- Credit Mode Actions -->
               <div class="mode-actions-group" id="creditActionsGroup">
-                <button type="button" class="btn btn-white-border btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
+                <button type="button" class="btn btn-outline btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -403,7 +412,7 @@
                   <span>Add Invoice</span>
                 </button>
 
-                <button type="button" class="btn btn-white-border btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
+                <button type="button" class="btn btn-outline btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="17 8 12 3 7 8"/>
@@ -413,14 +422,18 @@
                 </button>
                 <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
 
-                <button type="button" class="btn btn-ghost btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
-                  <span class="invoice-count-pill" id="totalInvoicesCountBadge">15 Invoices</span>
+                <button type="button" class="btn btn-outline btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span id="totalInvoicesCountBadge">207 Invoices</span>
                 </button>
               </div>
 
               <!-- Debit Mode Actions -->
               <div class="mode-actions-group" id="debitActionsGroup" style="display: none;">
-                <button type="button" class="btn btn-white-border btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
+                <button type="button" class="btn btn-outline btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -428,7 +441,7 @@
                   <span>Add Vendor Bill</span>
                 </button>
 
-                <button type="button" class="btn btn-white-border btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
+                <button type="button" class="btn btn-outline btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="17 8 12 3 7 8"/>
@@ -438,20 +451,14 @@
                 </button>
                 <input type="file" id="billCsvInput" accept=".csv,text/csv" class="hidden-input">
 
-                <button type="button" class="btn btn-ghost btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
-                  <span class="invoice-count-pill bill-count-pill" id="totalBillsCountBadge">6 Vendor Bills</span>
+                <button type="button" class="btn btn-outline btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span id="totalBillsCountBadge">9 Vendor Bills</span>
                 </button>
               </div>
-
-              <!-- Export Reconciled Action -->
-              <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <span id="exportCsvBtnText">Export CSV</span>
-              </button>
             </div>
           </div>
 
@@ -488,13 +495,13 @@
           <!-- Table Footer Totals Bar -->
           <div class="table-footer-bar">
             <div class="footer-left-info">
-              <span>Showing <strong id="visibleRowCount">0</strong> transactions for <strong id="currentMonthLabel">September 2026</strong></span>
+              <span>Showing <strong id="visibleRowCount">207</strong> transactions for <strong id="currentMonthLabel">July 2026</strong></span>
               <span class="dot-sep">•</span>
-              <span class="footer-bank-detail" id="footerBankDetails">Canara Bank Current A/c ••4092</span>
+              <span class="footer-bank-detail" id="footerBankDetails">ICICI Bank Current A/c ••3021</span>
             </div>
             <div class="footer-right-info">
               <span class="subtotal-label" id="footerSubtotalLabel">Subtotal Inflow:</span>
-              <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 0.00</span>
+              <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 86,62,155</span>
             </div>
           </div>
         </div>
@@ -523,8 +530,8 @@
               <div class="kpi-icon-circle icon-circle-blue">₹</div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount">₹ 78,42,800</div>
-              <div class="kpi-card-subtext">Across 3 corporate bank desks</div>
+              <div class="kpi-card-amount" id="dashCorporateInflow">₹ 0</div>
+              <div class="kpi-card-subtext" id="dashCorporateInflowSub">Across 3 corporate bank desks</div>
             </div>
           </div>
 
@@ -534,8 +541,8 @@
               <div class="kpi-icon-circle icon-circle-green">✓</div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount">88.4%</div>
-              <div class="kpi-card-subtext">+12.6% efficiency vs last month</div>
+              <div class="kpi-card-amount" id="dashReconRate">0.0%</div>
+              <div class="kpi-card-subtext" id="dashReconRateSub">0 transactions linked</div>
             </div>
           </div>
 
@@ -545,7 +552,7 @@
               <div class="kpi-icon-circle icon-circle-amber">📄</div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="dashTotalInvoicesCount">15 Invoices</div>
+              <div class="kpi-card-amount" id="dashTotalInvoicesCount">0 Invoices</div>
               <div class="kpi-card-subtext">Active ERP receivables queue</div>
             </div>
           </div>
@@ -802,7 +809,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" id="cancelAddBillBtn">Cancel</button>
-          <button type="submit" class="btn btn-rose">Save & Add Vendor Bill</button>
+          <button type="submit" class="btn btn-primary">Save & Add Vendor Bill</button>
         </div>
       </form>
     </div>
@@ -937,8 +944,8 @@
   <!-- Compatibility Hidden Containers for Tests and Helpers -->
   <div id="monthlySheetList" style="display: none;"></div>
   <div id="monthTabsContainer" style="display: none;"></div>
-  <span id="footerMonthLabel" style="display: none;">September 2026</span>
-  <span id="kpiBankLabel" style="display: none;">Canara Bank Inflow</span>
+  <span id="footerMonthLabel" style="display: none;">July 2026</span>
+  <span id="kpiBankLabel" style="display: none;">ICICI Bank Inflow</span>
   <span id="uploadBtnText" style="display: none;">Upload CSV</span>
   <button type="button" id="downloadSampleCsvBtn" style="display: none;"></button>
   <button type="button" id="clearDataBtn" style="display: none;"></button>
@@ -946,7 +953,9 @@
   <div id="progressBarFill" style="display: none;"></div>
   <span id="kpiProgressSubtext" style="display: none;"></span>
 
+  <!-- Real Accounting & Bank Statement Dataset -->
+  <script src="data_ifimed.js?v=2.5"></script>
   <!-- Application Logic -->
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>
