@@ -3534,7 +3534,7 @@ button.user-profile-badge.active .profile-chevron-icon {
   max-width: 400px;
   background: var(--bg-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 40px rgba(24, 119, 242, 0.1);
   padding: 34px 28px 26px 28px;
   position: relative;
