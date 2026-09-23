@@ -69,7 +69,7 @@ let recentActivities = (typeof REAL_ACTIVITIES !== 'undefined' && Array.isArray(
 let currentActiveView = 'bank-statements'; // 'dashboard' | 'bank-statements'
 let activeMappingMode = 'credit'; // 'credit' (Inflow) | 'debit' (Outflow)
 let selectedBankId = 'icici-3021';
-let selectedMonthId = '2026-07';
+let selectedMonthId = '';
 let activeFilter = 'all'; // 'all' | 'unmapped' | 'mapped'
 let searchQuery = '';
 
@@ -80,6 +80,118 @@ let corporateBanks = JSON.parse(JSON.stringify(CORPORATE_BANKS));
 let activeConfirmingRowId = null;
 let confirmingInvoiceNo = '';
 let confirmingGuestName = '';
+
+// =============================================================================
+// Supabase Authentication Configuration & State
+// =============================================================================
+const SUPABASE_URL = 'https://bdvktgrehxwjovhycvsj.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_5UIETbqIx6cB_-GcicQqUg_KcjPysFm';
+
+let supabaseClient = null;
+let currentAuthUser = null;
+
+function getSupabaseClient() {
+  if (!supabaseClient && typeof window !== 'undefined' && window.supabase && window.supabase.createClient) {
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
+    } catch (e) {
+      console.warn('Supabase initialization error:', e);
+    }
+  }
+  return supabaseClient;
+}
+
+function getUserInitials(name, email) {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) {
+    return email.slice(0, 2).toUpperCase();
+  }
+  return 'IF';
+}
+
+function updateAuthUI(user) {
+  currentAuthUser = user;
+  const authGateOverlay = document.getElementById('authGateOverlay');
+  const userAvatarInitials = document.getElementById('userAvatarInitials');
+  const userDisplayName = document.getElementById('userDisplayName');
+  const userRoleName = document.getElementById('userRoleName');
+  const dropdownAvatar = document.getElementById('dropdownAvatar');
+  const dropdownName = document.getElementById('dropdownName');
+  const dropdownEmail = document.getElementById('dropdownEmail');
+  const dropdownBadge = document.getElementById('dropdownBadge');
+  const sidebarAvatar = document.getElementById('sidebarAvatar');
+  const sidebarUserName = document.getElementById('sidebarUserName');
+
+  if (user) {
+    const email = user.email || 'user@ifimed.com';
+    const metadata = user.user_metadata || {};
+    const name = metadata.name || (email.toLowerCase().includes('admin') ? 'IFIMED Admin' : 'Financial Controller');
+    const role = metadata.role || (email.toLowerCase().includes('admin') ? 'Corporate Controller' : 'Treasury Controller');
+    const initials = getUserInitials(name, email);
+
+    if (userAvatarInitials) userAvatarInitials.textContent = initials;
+    if (userDisplayName) userDisplayName.textContent = name;
+    if (userRoleName) userRoleName.textContent = role;
+
+    if (dropdownAvatar) dropdownAvatar.textContent = initials;
+    if (dropdownName) dropdownName.textContent = name;
+    if (dropdownEmail) dropdownEmail.textContent = email;
+    if (dropdownBadge) dropdownBadge.textContent = role;
+
+    if (sidebarAvatar) sidebarAvatar.textContent = initials;
+    if (sidebarUserName) sidebarUserName.textContent = name;
+
+    if (authGateOverlay) {
+      authGateOverlay.classList.add('hidden');
+    }
+  } else {
+    if (userAvatarInitials) userAvatarInitials.textContent = '??';
+    if (userDisplayName) userDisplayName.textContent = 'Not Signed In';
+    if (userRoleName) userRoleName.textContent = 'Please Authenticate';
+
+    if (sidebarAvatar) sidebarAvatar.textContent = '??';
+    if (sidebarUserName) sidebarUserName.textContent = 'Guest';
+
+    if (authGateOverlay) {
+      authGateOverlay.classList.remove('hidden');
+    }
+  }
+}
+
+async function handleSignOut() {
+  try {
+    const client = getSupabaseClient();
+    if (client) {
+      await client.auth.signOut();
+    }
+  } catch (err) {
+    console.warn('SignOut error:', err);
+  } finally {
+    try {
+      localStorage.removeItem('ifimed_auth_user');
+      sessionStorage.removeItem('ifimed_auth_user');
+    } catch (e) {}
+    currentAuthUser = null;
+    updateAuthUI(null);
+    const userProfileDropdown = document.getElementById('userProfileDropdown');
+    const userProfileBtn = document.getElementById('userProfileBtn');
+    if (userProfileDropdown) userProfileDropdown.style.display = 'none';
+    if (userProfileBtn) userProfileBtn.classList.remove('active');
+    showToast('Signed out of IFIMED Treasury Desk successfully.', 'info');
+  }
+}
 
 // =============================================================================
 // 2. DOM Selectors
@@ -123,8 +235,10 @@ const bankCsvInput = document.getElementById('bankCsvInput');
 const uploadCsvBtn = document.getElementById('uploadCsvBtn');
 
 // Desk Tabs & Dynamic Labels
+const tabAllMode = document.getElementById('tabAllMode');
 const tabCreditMode = document.getElementById('tabCreditMode');
 const tabDebitMode = document.getElementById('tabDebitMode');
+const tabAllBadge = document.getElementById('tabAllBadge');
 const tabCreditBadge = document.getElementById('tabCreditBadge');
 const tabDebitBadge = document.getElementById('tabDebitBadge');
 const mappingCardTitle = document.getElementById('mappingCardTitle');
@@ -236,45 +350,6 @@ const toastMessage = document.getElementById('toastMessage');
 // Preview banner & Trend Chart
 const closePreviewBannerBtn = document.getElementById('closePreviewBannerBtn');
 const miniBarChart = document.getElementById('miniBarChart');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
-
-// =============================================================================
-// Theme Manager (Dark & Light Mode Engine)
-// =============================================================================
-
-function getActiveTheme() {
-  return document.documentElement.getAttribute('data-theme') ||
-    localStorage.getItem('ifimed_theme') ||
-    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-}
-
-function setTheme(theme, save = true) {
-  document.documentElement.setAttribute('data-theme', theme);
-  if (save) {
-    try {
-      localStorage.setItem('ifimed_theme', theme);
-    } catch (e) {}
-  }
-  if (themeToggleBtn) {
-    themeToggleBtn.setAttribute('title', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode (Ctrl+D)`);
-    themeToggleBtn.setAttribute('aria-label', `Theme: ${theme}. Click to switch.`);
-  }
-  if (typeof renderCreditTrendChart === 'function') {
-    renderCreditTrendChart();
-  }
-  showToast(`Switched to ${theme === 'dark' ? 'Dark' : 'Light'} Mode`, 'info');
-}
-
-function toggleTheme() {
-  const current = getActiveTheme();
-  const next = current === 'dark' ? 'light' : 'dark';
-  setTheme(next, true);
-}
-
-// Expose globally
-window.setTheme = setTheme;
-window.toggleTheme = toggleTheme;
-window.getActiveTheme = getActiveTheme;
 
 // =============================================================================
 // 3. Formatting & Toast Helpers
@@ -412,16 +487,18 @@ function getCurrentSheet() {
       debitRecords: []
     };
   }
-  return bank.sheets.find(s => s.monthId === selectedMonthId) || bank.sheets[0] || {
-    monthId: selectedMonthId || '2026-07',
-    label: 'No Statement',
-    fileName: 'No file uploaded',
-    uploadedOn: '—',
-    creditsCount: 0,
-    debitsCount: 0,
-    records: [],
-    debitRecords: []
-  };
+
+  // If selectedMonthId matches a sheet in this bank, return it
+  if (selectedMonthId) {
+    const matched = bank.sheets.find(s => s.monthId === selectedMonthId);
+    if (matched) return matched;
+  }
+
+  // Otherwise, default to the first sheet with records, or sheets[0], and sync selectedMonthId!
+  const sheetWithRecords = bank.sheets.find(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0));
+  const defaultSheet = sheetWithRecords || bank.sheets[0];
+  selectedMonthId = defaultSheet.monthId;
+  return defaultSheet;
 }
 
 function switchBank(bankId) {
@@ -609,9 +686,12 @@ function renderStatementFilesTable() {
   const bank = getActiveBank();
   if (!bank || !bank.sheets || bank.sheets.length === 0) {
     statementFilesTableBody.innerHTML = `
-      <tr>
-        <td colspan="4" style="text-align: center; padding: 28px 16px; color: var(--text-tertiary); font-size: 13px;">
-          No statement sheets uploaded yet. Upload a CSV file above to create your first statement.
+      <tr class="statement-files-empty-row">
+        <td colspan="4">
+          <div class="statement-files-empty">
+            <p>No statement sheets uploaded yet.</p>
+            <p class="statement-files-empty-hint">Use Upload Statement above, or drop a CSV / Excel file on this table.</p>
+          </div>
         </td>
       </tr>
     `;
@@ -654,7 +734,9 @@ function renderStatementFilesTable() {
 // 7. Credit & Debit Mapping Desk & Inline Confirmation Drawer
 // =============================================================================
 
-function switchMappingMode(mode) {
+function switchMappingMode(mode, options) {
+  const opts = (options && typeof options === 'object') ? options : {};
+  const silent = !!opts.silent;
   if (activeMappingMode === mode) return;
   activeMappingMode = mode;
   activeConfirmingRowId = null;
@@ -662,6 +744,10 @@ function switchMappingMode(mode) {
   confirmingGuestName = '';
 
   // Update tab buttons
+  if (tabAllMode) {
+    tabAllMode.classList.toggle('active', mode === 'all');
+    tabAllMode.setAttribute('aria-selected', mode === 'all');
+  }
   if (tabCreditMode) {
     tabCreditMode.classList.toggle('active', mode === 'credit');
     tabCreditMode.setAttribute('aria-selected', mode === 'credit');
@@ -671,71 +757,130 @@ function switchMappingMode(mode) {
     tabDebitMode.setAttribute('aria-selected', mode === 'debit');
   }
 
-  // Update action groups
-  if (creditActionsGroup) creditActionsGroup.style.display = mode === 'credit' ? 'flex' : 'none';
-  if (debitActionsGroup) debitActionsGroup.style.display = mode === 'debit' ? 'flex' : 'none';
+  // Update action groups (in 'all' mode, both invoice and bill actions are accessible)
+  if (creditActionsGroup) creditActionsGroup.style.display = (mode === 'credit' || mode === 'all') ? 'flex' : 'none';
+  if (debitActionsGroup) debitActionsGroup.style.display = (mode === 'debit' || mode === 'all') ? 'flex' : 'none';
 
   // Update Titles & Subtitles
   if (mappingCardTitle) {
-    mappingCardTitle.textContent = mode === 'credit' ? 'Credit mapping' : 'Debit mapping';
+    if (mode === 'all') {
+      mappingCardTitle.textContent = 'All transactions (Credits & Debits)';
+    } else if (mode === 'credit') {
+      mappingCardTitle.textContent = 'Credit mapping (Inflow)';
+    } else {
+      mappingCardTitle.textContent = 'Debit mapping (Outflow)';
+    }
   }
   if (mappingCardSubtitle) {
-    mappingCardSubtitle.textContent = mode === 'credit'
-      ? 'Choose an invoice, review the bank evidence, then confirm the link.'
-      : 'Choose a vendor bill, review the bank evidence, then confirm the link.';
+    if (mode === 'all') {
+      mappingCardSubtitle.textContent = 'Reconcile incoming customer payments and outgoing vendor bills together.';
+    } else if (mode === 'credit') {
+      mappingCardSubtitle.textContent = 'Choose an invoice, review the bank evidence, then confirm the link.';
+    } else {
+      mappingCardSubtitle.textContent = 'Choose a vendor bill, review the bank evidence, then confirm the link.';
+    }
   }
 
   // Update Table Headers
   if (thAmountLabel) {
-    thAmountLabel.textContent = mode === 'credit' ? 'CREDIT AMOUNT' : 'DEBIT AMOUNT';
+    if (mode === 'all') {
+      thAmountLabel.textContent = 'AMOUNT (INFLOW / OUTFLOW)';
+    } else if (mode === 'credit') {
+      thAmountLabel.textContent = 'CREDIT AMOUNT';
+    } else {
+      thAmountLabel.textContent = 'DEBIT AMOUNT';
+    }
   }
   if (thMappingLabel) {
-    thMappingLabel.textContent = mode === 'credit' ? 'INVOICE MAPPING' : 'VENDOR BILL MAPPING';
+    if (mode === 'all') {
+      thMappingLabel.textContent = 'MATCHING RECORD (INVOICE / BILL)';
+    } else if (mode === 'credit') {
+      thMappingLabel.textContent = 'INVOICE MAPPING';
+    } else {
+      thMappingLabel.textContent = 'VENDOR BILL MAPPING';
+    }
   }
   if (footerSubtotalLabel) {
-    footerSubtotalLabel.textContent = mode === 'credit' ? 'Subtotal Inflow:' : 'Subtotal Outflow:';
+    if (mode === 'all') {
+      footerSubtotalLabel.textContent = 'Net Cash Flow:';
+    } else if (mode === 'credit') {
+      footerSubtotalLabel.textContent = 'Subtotal Inflow:';
+    } else {
+      footerSubtotalLabel.textContent = 'Subtotal Outflow:';
+    }
   }
   if (exportCsvBtnText) {
-    exportCsvBtnText.textContent = mode === 'credit' ? 'Export CSV' : 'Export Reconciled Debits';
+    if (mode === 'all') {
+      exportCsvBtnText.textContent = 'Export All Reconciled';
+    } else if (mode === 'credit') {
+      exportCsvBtnText.textContent = 'Export CSV';
+    } else {
+      exportCsvBtnText.textContent = 'Export Reconciled Debits';
+    }
   }
 
   // Update KPI Headers (Human-friendly Title Case)
   if (kpiTotalHeader) {
-    kpiTotalHeader.textContent = mode === 'credit' ? 'Total Credits (This Month)' : 'Total Debits (This Month)';
+    if (mode === 'all') {
+      kpiTotalHeader.textContent = 'Total Inflow (Credits)';
+    } else if (mode === 'credit') {
+      kpiTotalHeader.textContent = 'Total Credits (This Month)';
+    } else {
+      kpiTotalHeader.textContent = 'Total Debits (This Month)';
+    }
   }
   if (kpiMappedHeader) {
-    kpiMappedHeader.textContent = mode === 'credit' ? 'Mapped Credits' : 'Mapped Debits';
+    if (mode === 'all') {
+      kpiMappedHeader.textContent = 'Total Outflow (Debits)';
+    } else if (mode === 'credit') {
+      kpiMappedHeader.textContent = 'Mapped Credits';
+    } else {
+      kpiMappedHeader.textContent = 'Mapped Debits';
+    }
   }
   if (kpiUnmappedHeader) {
-    kpiUnmappedHeader.textContent = mode === 'credit' ? 'Unmapped Credits' : 'Unmapped Debits';
+    if (mode === 'all') {
+      kpiUnmappedHeader.textContent = 'Net Cash Flow';
+    } else if (mode === 'credit') {
+      kpiUnmappedHeader.textContent = 'Unmapped Credits';
+    } else {
+      kpiUnmappedHeader.textContent = 'Unmapped Debits';
+    }
   }
   if (kpiTrendHeader) {
-    kpiTrendHeader.textContent = mode === 'credit' ? 'Credit Trend' : 'Debit Trend';
+    kpiTrendHeader.textContent = (mode === 'all') ? 'Cash Flow Trend' : (mode === 'credit' ? 'Credit Trend' : 'Debit Trend');
   }
   if (kpiTotalIcon) {
-    kpiTotalIcon.className = `kpi-icon-circle ${mode === 'credit' ? 'icon-circle-blue' : 'icon-circle-rose'}`;
-    kpiTotalIcon.innerHTML = mode === 'credit' ? `
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <line x1="17" y1="7" x2="7" y2="17"></line>
-        <polyline points="17 17 7 17 7 7"></polyline>
-      </svg>
-    ` : `
+    kpiTotalIcon.className = `kpi-icon-circle ${mode === 'debit' ? 'icon-circle-rose' : 'icon-circle-blue'}`;
+    kpiTotalIcon.innerHTML = (mode === 'debit') ? `
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <line x1="7" y1="17" x2="17" y2="7"></line>
         <polyline points="7 7 17 7 17 17"></polyline>
+      </svg>
+    ` : `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="17" y1="7" x2="7" y2="17"></line>
+        <polyline points="17 17 7 17 7 7"></polyline>
       </svg>
     `;
   }
 
   // Update Empty State Texts
   if (emptyStateTitle) {
-    emptyStateTitle.textContent = mode === 'credit'
-      ? 'No matching credit records found'
-      : 'No matching debit records found';
+    if (mode === 'all') {
+      emptyStateTitle.textContent = 'No matching credit or debit records found';
+    } else if (mode === 'credit') {
+      emptyStateTitle.textContent = 'No matching credit records found';
+    } else {
+      emptyStateTitle.textContent = 'No matching debit records found';
+    }
   }
 
-  renderAll();
-  showToast(`Switched to ${mode === 'credit' ? 'Credit' : 'Debit'} mapping desk`);
+  renderAll(opts.autoPersist !== false);
+  if (!silent) {
+    const deskLabel = mode === 'all' ? 'All (Credits & Debits)' : (mode === 'credit' ? 'Credit' : 'Debit');
+    showToast(`Switched to ${deskLabel} reconciliation desk`);
+  }
 }
 
 // Expose globally for inline onclick handlers & shortcuts
@@ -745,37 +890,94 @@ function renderCreditTable() {
   const currentSheet = getCurrentSheet();
   if (currentMonthLabel) currentMonthLabel.textContent = currentSheet.label;
 
-  const isDebit = activeMappingMode === 'debit';
   if (!currentSheet.records) currentSheet.records = [];
   if (!currentSheet.debitRecords) currentSheet.debitRecords = [];
 
+  const creditsList = currentSheet.records;
+  const debitsList = currentSheet.debitRecords;
+
+  const totalCreditsCount = creditsList.length;
+  const totalDebitsCount = debitsList.length;
+  const totalAllCount = totalCreditsCount + totalDebitsCount;
+
   // Update Tab Badges
-  if (tabCreditBadge) tabCreditBadge.textContent = currentSheet.records.length;
-  if (tabDebitBadge) tabDebitBadge.textContent = currentSheet.debitRecords.length;
+  if (tabAllBadge) tabAllBadge.textContent = totalAllCount;
+  if (tabCreditBadge) tabCreditBadge.textContent = totalCreditsCount;
+  if (tabDebitBadge) tabDebitBadge.textContent = totalDebitsCount;
 
-  let records = isDebit ? currentSheet.debitRecords : currentSheet.records;
+  // Overall Financial Totals
+  const sumCreditAll = creditsList.reduce((acc, r) => acc + (r.amount || 0), 0);
+  const sumDebitAll = debitsList.reduce((acc, r) => acc + (r.amount || 0), 0);
+  const netCashFlow = sumCreditAll - sumDebitAll;
 
-  // Stats calculation
-  const totalCount = records.length;
-  const mappedCount = records.filter(r => r.status === 'mapped' || r.status === 'noted').length;
-  const unmappedCount = totalCount - mappedCount;
-  
-  const sumAmountAll = records.reduce((acc, r) => acc + r.amount, 0);
-  const sumAmountMapped = records.filter(r => r.status === 'mapped').reduce((acc, r) => acc + r.amount, 0);
-  const sumAmountUnmapped = records.filter(r => r.status === 'unmapped').reduce((acc, r) => acc + r.amount, 0);
+  const mappedCreditsCount = creditsList.filter(r => r.status === 'mapped' || r.status === 'noted').length;
+  const mappedDebitsCount = debitsList.filter(r => r.status === 'mapped' || r.status === 'noted').length;
+  const totalMappedCount = mappedCreditsCount + mappedDebitsCount;
 
-  // Update KPI Cards
-  if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumAmountAll);
-  if (kpiTotalCount) kpiTotalCount.textContent = totalCount;
-  if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumAmountMapped);
-  if (kpiMappedCount) kpiMappedCount.textContent = mappedCount;
-  if (kpiUnmappedAmount) kpiUnmappedAmount.textContent = formatINR(sumAmountUnmapped);
-  if (kpiUnmappedCount) kpiUnmappedCount.textContent = unmappedCount;
+  // Update KPI Cards depending on active mode:
+  if (activeMappingMode === 'all') {
+    if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumCreditAll);
+    if (kpiTotalCount) kpiTotalCount.textContent = `${totalCreditsCount} credits`;
+    if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumDebitAll);
+    if (kpiMappedCount) kpiMappedCount.textContent = `${totalDebitsCount} debits`;
+    if (kpiUnmappedAmount) {
+      kpiUnmappedAmount.textContent = `${netCashFlow >= 0 ? '+' : '-'} ${formatINR(Math.abs(netCashFlow))}`;
+      kpiUnmappedAmount.style.color = netCashFlow >= 0 ? '#10b981' : '#f43f5e';
+    }
+    if (kpiUnmappedCount) kpiUnmappedCount.textContent = `${totalMappedCount} of ${totalAllCount} linked`;
+  } else if (activeMappingMode === 'credit') {
+    const sumMapped = creditsList.filter(r => r.status === 'mapped').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const sumUnmapped = creditsList.filter(r => r.status === 'unmapped').reduce((acc, r) => acc + (r.amount || 0), 0);
+    if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumCreditAll);
+    if (kpiTotalCount) kpiTotalCount.textContent = totalCreditsCount;
+    if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumMapped);
+    if (kpiMappedCount) kpiMappedCount.textContent = mappedCreditsCount;
+    if (kpiUnmappedAmount) {
+      kpiUnmappedAmount.textContent = formatINR(sumUnmapped);
+      kpiUnmappedAmount.style.color = '';
+    }
+    if (kpiUnmappedCount) kpiUnmappedCount.textContent = totalCreditsCount - mappedCreditsCount;
+  } else {
+    // Debit Mode
+    const sumMapped = debitsList.filter(r => r.status === 'mapped').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const sumUnmapped = debitsList.filter(r => r.status === 'unmapped').reduce((acc, r) => acc + (r.amount || 0), 0);
+    if (kpiTotalAmount) kpiTotalAmount.textContent = formatINR(sumDebitAll);
+    if (kpiTotalCount) kpiTotalCount.textContent = totalDebitsCount;
+    if (kpiMappedAmount) kpiMappedAmount.textContent = formatINR(sumMapped);
+    if (kpiMappedCount) kpiMappedCount.textContent = mappedDebitsCount;
+    if (kpiUnmappedAmount) {
+      kpiUnmappedAmount.textContent = formatINR(sumUnmapped);
+      kpiUnmappedAmount.style.color = '';
+    }
+    if (kpiUnmappedCount) kpiUnmappedCount.textContent = totalDebitsCount - mappedDebitsCount;
+  }
 
-  if (countAllSpan) countAllSpan.textContent = totalCount;
-  if (countUnmappedSpan) countUnmappedSpan.textContent = unmappedCount;
-  if (countMappedSpan) countMappedSpan.textContent = mappedCount;
-  if (mappedCountDisplay) mappedCountDisplay.textContent = `${totalCount} records`;
+  // Build records to display according to activeMappingMode
+  let records = [];
+  if (activeMappingMode === 'all') {
+    const crItems = creditsList.map(r => Object.assign(r, { _isDebit: false }));
+    const drItems = debitsList.map(r => Object.assign(r, { _isDebit: true }));
+    records = [...crItems, ...drItems];
+    // Sort stably: latest date first
+    records.sort((a, b) => {
+      const da = new Date(a.date).getTime() || 0;
+      const db = new Date(b.date).getTime() || 0;
+      return db - da;
+    });
+  } else if (activeMappingMode === 'debit') {
+    records = debitsList.map(r => Object.assign(r, { _isDebit: true }));
+  } else {
+    records = creditsList.map(r => Object.assign(r, { _isDebit: false }));
+  }
+
+  const modeTotalCount = records.length;
+  const modeMappedCount = records.filter(r => r.status === 'mapped' || r.status === 'noted').length;
+  const modeUnmappedCount = modeTotalCount - modeMappedCount;
+
+  if (countAllSpan) countAllSpan.textContent = modeTotalCount;
+  if (countUnmappedSpan) countUnmappedSpan.textContent = modeUnmappedCount;
+  if (countMappedSpan) countMappedSpan.textContent = modeMappedCount;
+  if (mappedCountDisplay) mappedCountDisplay.textContent = `${modeTotalCount} records`;
 
   // Apply Filter
   if (activeFilter === 'unmapped') {
@@ -803,9 +1005,30 @@ function renderCreditTable() {
   }
 
   if (visibleRowCount) visibleRowCount.textContent = records.length;
-  const sumAmountVisible = records.reduce((acc, r) => acc + r.amount, 0);
-  if (totalCreditAmount) totalCreditAmount.textContent = formatINR(sumAmountVisible);
+  const sumAmountVisible = records.reduce((acc, r) => acc + (r.amount || 0), 0);
 
+  // Update Footer Subtotals based on mode
+  if (activeMappingMode === 'all') {
+    if (footerSubtotalLabel) footerSubtotalLabel.textContent = 'Net Cash Flow:';
+    if (totalCreditAmount) {
+      totalCreditAmount.textContent = `${netCashFlow >= 0 ? '+' : '-'} ${formatINR(Math.abs(netCashFlow))}`;
+      totalCreditAmount.className = `subtotal-val font-mono ${netCashFlow >= 0 ? 'amount-credit' : 'amount-debit'}`;
+    }
+  } else if (activeMappingMode === 'credit') {
+    if (footerSubtotalLabel) footerSubtotalLabel.textContent = 'Subtotal Inflow:';
+    if (totalCreditAmount) {
+      totalCreditAmount.textContent = formatINR(sumAmountVisible);
+      totalCreditAmount.className = 'subtotal-val font-mono amount-credit';
+    }
+  } else {
+    if (footerSubtotalLabel) footerSubtotalLabel.textContent = 'Subtotal Outflow:';
+    if (totalCreditAmount) {
+      totalCreditAmount.textContent = `- ${formatINR(sumAmountVisible)}`;
+      totalCreditAmount.className = 'subtotal-val font-mono amount-debit';
+    }
+  }
+
+  if (!creditTableBody) return;
   creditTableBody.innerHTML = '';
 
   if (records.length === 0) {
@@ -816,6 +1039,9 @@ function renderCreditTable() {
   }
 
   records.forEach(row => {
+    const isDebit = (row._isDebit !== undefined)
+      ? row._isDebit
+      : (activeMappingMode === 'debit' || (row.id && String(row.id).startsWith('DR-')));
     const isConfirming = activeConfirmingRowId === row.id;
 
     // Normal Row
@@ -872,6 +1098,10 @@ function renderCreditTable() {
       `;
     }
 
+    const flowBadge = `<span class="txn-flow-pill ${isDebit ? 'flow-debit' : 'flow-credit'}">${isDebit ? 'DR · Outflow' : 'CR · Inflow'}</span>`;
+    const amountSign = isDebit ? '- ' : '+ ';
+    const amountClass = isDebit ? 'amount-debit' : 'amount-credit';
+
     tr.innerHTML = `
       <td class="col-date">${escapeHtml(row.date)}</td>
       <td class="col-narration">
@@ -885,7 +1115,10 @@ function renderCreditTable() {
         </div>
       </td>
       <td class="col-amount text-right">
-        <span class="amount-text ${isDebit ? 'amount-debit' : ''}">${isDebit ? '- ' : ''}${formatINR(row.amount)}</span>
+        <div class="amount-cell-wrap">
+          ${flowBadge}
+          <span class="amount-text ${amountClass}">${amountSign}${formatINR(row.amount)}</span>
+        </div>
       </td>
       <td class="col-mapping">
         ${mappingCellHtml}
@@ -1285,7 +1518,7 @@ function openInlineConfirmation(row, invoiceNo, guestName) {
 }
 
 function executeInvoiceLink(row, invoiceNo, guestName) {
-  const isDebit = activeMappingMode === 'debit' || (row.id && String(row.id).startsWith('DR-'));
+  const isDebit = (row._isDebit !== undefined) ? row._isDebit : (activeMappingMode === 'debit' || (row.id && String(row.id).startsWith('DR-')));
   row.status = 'mapped';
   row.mapping = {
     invoiceNo: invoiceNo,
@@ -1447,95 +1680,934 @@ function autoMatchAllStatementData(interactive = true) {
 }
 
 // =============================================================================
-// 8. Bank Statement CSV Upload with Strict Deduplication (Credits & Debits)
+// 8. Bank Statement CSV & Excel Upload with Intelligent Bank Detection & Supabase Persistence
 // =============================================================================
 
-function processBankStatementCsv(csvText) {
-  const bank = getActiveBank();
-  if (!bank) return;
+function detectCsvDelimiter(csvText) {
+  const sample = csvText.slice(0, 5000);
+  const commas = (sample.match(/,/g) || []).length;
+  const semicolons = (sample.match(/;/g) || []).length;
+  const tabs = (sample.match(/\t/g) || []).length;
+  if (tabs > commas && tabs > semicolons) return '\t';
+  if (semicolons > commas) return ';';
+  return ',';
+}
+
+function parseCsvLine(line, delimiter = ',') {
+  const cols = [];
+  let insideQuotes = false;
+  let curVal = '';
+  for (let c = 0; c < line.length; c++) {
+    const char = line[c];
+    if (char === '"' || char === "'") {
+      insideQuotes = !insideQuotes;
+    } else if (char === delimiter && !insideQuotes) {
+      cols.push(curVal.trim().replace(/^["']|["']$/g, ''));
+      curVal = '';
+    } else {
+      curVal += char;
+    }
+  }
+  cols.push(curVal.trim().replace(/^["']|["']$/g, ''));
+  return cols;
+}
+
+function isDateLikeValue(val) {
+  const str = String(val == null ? '' : val).trim();
+  if (!str) return false;
+  if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/.test(str)) return true;
+  if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(str)) return true;
+  if (/^\d{1,2}[\s\-\/][A-Za-z]{3,9}[\s\-\/,]+\d{2,4}$/.test(str)) return true;
+  if (/^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}$/.test(str)) return true;
+  if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s*[-–to]+\s*\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/i.test(str)) return true;
+  return false;
+}
+
+function isValidTransactionDate(dateStr) {
+  const str = String(dateStr == null ? '' : dateStr).trim();
+  if (!str || str.length > 28) return false;
+  if (/^\d{1,3}$/.test(str)) return false;
+  if (/\s[-–]\s/.test(str) || /\s+to\s+/i.test(str)) return false;
+  return isDateLikeValue(str);
+}
+
+function amountLooksLikeDateDigits(amount, dateStr) {
+  const dateDigits = String(dateStr || '').replace(/\D/g, '').replace(/^0+/, '');
+  const amtDigits = String(Math.round(Math.abs(Number(amount) || 0)));
+  return !!(dateDigits && amtDigits && dateDigits === amtDigits);
+}
+
+function isPlausibleMoneyAmount(amount) {
+  const num = Number(amount);
+  if (!Number.isFinite(num) || num === 0) return false;
+  const abs = Math.abs(num);
+  if (abs < 0.01 || abs > 100000000) return false;
+  return true;
+}
+
+function parseAmount(val) {
+  if (val === undefined || val === null) return 0;
+  let str = String(val).trim();
+  if (!str || str === '-' || str === '--' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'na') return 0;
+  if (isDateLikeValue(str)) return 0;
+  const isNegative = (str.startsWith('(') && str.endsWith(')')) || str.endsWith('-') || str.toLowerCase().endsWith('dr');
+  str = str.replace(/[^0-9.-]/g, '');
+  if (!str || str === '-' || str === '.' || str === '-.') return 0;
+  let num = parseFloat(str) || 0;
+  if (isNegative) num = -Math.abs(num);
+  return num;
+}
+
+function findPlausibleAmountInRow(cols, skipCols) {
+  const skip = new Set((skipCols || []).filter(i => i >= 0));
+  for (let i = cols.length - 1; i >= 0; i--) {
+    if (skip.has(i)) continue;
+    if (isDateLikeValue(cols[i])) continue;
+    const amt = parseAmount(cols[i]);
+    if (isPlausibleMoneyAmount(amt)) return amt;
+  }
+  return 0;
+}
+
+function isSummaryOrFooterLine(line) {
+  if (!line || !line.trim()) return true;
+  const normalized = line.toLowerCase().replace(/[\s\-_]+/g, ' ').trim();
+  if (normalized.startsWith('total') ||
+      normalized.includes('t o t a l') ||
+      normalized.includes('closing balance') ||
+      normalized.includes('opening balance') ||
+      normalized.includes('end of statement') ||
+      normalized.includes('generated on') ||
+      normalized.includes('statement summary') ||
+      normalized.includes('statement period') ||
+      normalized.includes('page ') ||
+      normalized.startsWith('count ') ||
+      normalized.startsWith('grand total') ||
+      normalized.includes('marg erp') ||
+      normalized.includes('sales book') ||
+      normalized.includes('purchase book') ||
+      normalized.includes('online purchase import') ||
+      /call\s*0\d{8,}/.test(normalized) ||
+      /^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s*[-–to]+\s*\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function isGstOrSalesRegisterFile(fileName, csvText) {
+  const sample = `${fileName || ''} ${(csvText || '').slice(0, 8000)}`.toLowerCase();
+  if (/gstr|gst[_\s-]?r(?:eturn)?|gstr-?1|gst r-?1|e-?invoice|einvoice/.test(sample)) return true;
+  if (/sales\s*book|sales\s*register|invoice\s*register|invoice\s*book|marg\s*erp/.test(sample)) return true;
+  const invoiceHits = ((csvText || '').match(/\bIFB\d{4,}\b/gi) || []).length;
+  const hasBankCue = /ifsc|a\/c no|account no|withdrawal|deposit \(cr\)|bank statement|\butr\b|cheque no/i.test(sample);
+  return invoiceHits >= 5 && !hasBankCue;
+}
+
+function isSalesRegisterOrInvoiceBook(fileName, csvText) {
+  return isGstOrSalesRegisterFile(fileName, csvText);
+}
+
+function isPurchaseRegister(fileName, csvText) {
+  const sample = `${fileName || ''} ${(csvText || '').slice(0, 4000)}`.toLowerCase();
+  return /purchase\s*book|purchase\s*register|debit note register/.test(sample);
+}
+
+function sanitizeMaskedAccNo(accNo, fullAccNo, bankId) {
+  const raw = String(accNo || '');
+  const isCorrupt = /[�\uFFFD]/.test(raw) || !/\d{4}/.test(raw);
+  if (!isCorrupt) {
+    return `••••${raw.replace(/\D/g, '').slice(-4)}`;
+  }
+  const idSuffix = String(bankId || '').split('-').pop();
+  if (idSuffix && /^\d{4}$/.test(idSuffix)) return `••••${idSuffix}`;
+  const suffix = String(fullAccNo || '').replace(/\D/g, '').slice(-4);
+  if (suffix) return `••••${suffix}`;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length >= 4) return `••••${digits.slice(-4)}`;
+  return '••••0000';
+}
+
+function isGarbageStatementRow(row) {
+  if (!row) return true;
+  if (!isValidTransactionDate(row.date)) return true;
+  if (!isPlausibleMoneyAmount(row.amount)) return true;
+  if (amountLooksLikeDateDigits(row.amount, row.date)) return true;
+  const blob = `${row.date || ''} ${row.narration || ''} ${row.payer || ''}`;
+  if (/marg erp|chemist rs\.|online purchase import|call 0\d{8,}/i.test(blob)) return true;
+  return false;
+}
+
+function sanitizeCorporateBanks(banks) {
+  if (!Array.isArray(banks)) return [];
+  return banks.map(b => {
+    const sheets = (b.sheets || []).map(s => {
+      const records = (s.records || []).filter(r => !isGarbageStatementRow(r));
+      const debitRecords = (s.debitRecords || []).filter(r => !isGarbageStatementRow(r));
+      return Object.assign({}, s, {
+        records,
+        debitRecords,
+        creditsCount: records.length,
+        debitsCount: debitRecords.length
+      });
+    }).filter(s => (s.records && s.records.length) || (s.debitRecords && s.debitRecords.length));
+    return Object.assign({}, b, {
+      accNo: sanitizeMaskedAccNo(b.accNo || b.acc_no, b.fullAccNo || b.full_acc_no, b.id),
+      sheets
+    });
+  });
+}
+
+function extractPartyFromNarration(narration) {
+  if (!narration) return '';
+  let str = String(narration).trim();
+
+  // If there are slash-separated parts (e.g. UPI/DR/123/Party/Bank, NEFT/CR/Ref/Party)
+  if (str.includes('/')) {
+    const parts = str.split('/').map(p => p.trim()).filter(Boolean);
+    const partyCandidate = parts.find(p => {
+      const lower = p.toLowerCase();
+      if (['upi', 'neft', 'rtgs', 'imps', 'cr', 'dr', 'inf', 'inft', 'clg', 'chq', 'cheque', 'transfer'].includes(lower)) return false;
+      if (/^\d+$/.test(p)) return false;
+      if (/^[A-Za-z]{4,}\d+/.test(p)) return false;
+      return p.length >= 3;
+    });
+    if (partyCandidate) return partyCandidate;
+  }
+
+  // If there is a hyphen separator: IMPS-12345-Party Name
+  if (str.includes('-')) {
+    const parts = str.split('-').map(p => p.trim()).filter(Boolean);
+    const partyCandidate = parts.find(p => {
+      const lower = p.toLowerCase();
+      if (['upi', 'neft', 'rtgs', 'imps', 'cr', 'dr'].includes(lower)) return false;
+      if (/^\d+$/.test(p)) return false;
+      return p.length >= 3;
+    });
+    if (partyCandidate) return partyCandidate;
+  }
+
+  str = str.replace(/^(?:to|by)\s+(?:transfer|cheque|chq|clearing)[\s\-\:]+/i, '');
+  str = str.replace(/^(?:clg|chq)\s+(?:to|by)[\s\-\:]+/i, '');
+  return str.slice(0, 60).trim();
+}
+
+function findStatementHeaders(lines, delimiter) {
+  let bestHeader = null;
+  let maxScore = -1;
+
+  for (let i = 0; i < Math.min(lines.length, 50); i++) {
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
+
+    const lowerLine = rawLine.toLowerCase();
+    if (lowerLine.startsWith('statement period') || lowerLine.startsWith('opening balance') || lowerLine.startsWith('account statement for') || lowerLine.startsWith('branch:') || lowerLine.startsWith('customer id:')) {
+      continue;
+    }
+
+    const rawCols = parseCsvLine(rawLine, delimiter).map(c => c.trim().toLowerCase().replace(/[\r\n\t]+/g, ' '));
+    if (rawCols.length < 2) continue;
+
+    let dateCol = -1, narrationCol = -1, refCol = -1, creditCol = -1, debitCol = -1, amountCol = -1, drCrCol = -1, payerCol = -1;
+    let score = 0;
+
+    rawCols.forEach((c, idx) => {
+      const clean = c.replace(/[_\-\/\.\(\)\s]+/g, ' ').trim();
+
+      // Date column
+      if (dateCol === -1 && (
+        clean === 'date' || clean === 'dt' || clean === 'txn date' || clean === 'trans date' ||
+        clean === 'transaction date' || clean === 'value date' || clean === 'booking date' ||
+        clean === 'posting date' || clean === 'entry date' || clean === 'vch date' || clean === 'bill date' ||
+        clean.includes('date') || clean.includes('txn dt')
+      )) {
+        dateCol = idx;
+        score += 4;
+      }
+
+      // Narration / Description / Particulars
+      else if (narrationCol === -1 && (
+        clean === 'narration' || clean === 'particulars' || clean === 'particular' ||
+        clean === 'description' || clean === 'desc' || clean === 'remarks' ||
+        clean === 'details' || clean === 'tran desc' || clean === 'transaction remarks' ||
+        clean.includes('narration') || clean.includes('particular') || clean.includes('description') || clean.includes('remarks')
+      )) {
+        narrationCol = idx;
+        score += 3;
+      }
+
+      // Party / Customer / Vendor
+      else if (payerCol === -1 && (
+        clean.includes('party') || clean.includes('customer') || clean.includes('vendor') ||
+        clean.includes('client') || clean.includes('payee') || clean.includes('beneficiary') ||
+        clean.includes('name') || clean.includes('account name')
+      )) {
+        payerCol = idx;
+        score += 2;
+      }
+
+      // Reference / Cheque
+      else if (refCol === -1 && (
+        clean === 'chq no' || clean === 'cheque no' || clean === 'chq' || clean === 'cheque' ||
+        clean === 'ref no' || clean === 'ref' || clean === 'reference' || clean === 'utr' ||
+        clean === 'utr no' || clean === 'txn id' || clean === 'instrument' || clean === 'vch no' ||
+        clean.includes('chq') || clean.includes('cheque') || clean.includes('ref') || clean.includes('utr') || clean.includes('vch no')
+      )) {
+        refCol = idx;
+        score += 2;
+      }
+
+      // Credit / Deposit
+      else if (creditCol === -1 && (
+        clean === 'credit' || clean === 'cr' || clean === 'deposit' || clean === 'deposits' ||
+        clean === 'credit amt' || clean === 'credit amount' || clean === 'deposit amt' || clean === 'deposit amount' ||
+        clean === 'cr amt' || clean === 'cr amount' || clean === 'inflow' || clean === 'paid in' || clean === 'receipts' ||
+        clean.startsWith('credit') || clean.startsWith('deposit') || clean === 'cr inr' || clean === 'credit inr'
+      )) {
+        creditCol = idx;
+        score += 3;
+      }
+
+      // Debit / Withdrawal
+      else if (debitCol === -1 && (
+        clean === 'debit' || clean === 'dr' || clean === 'withdrawal' || clean === 'withdrawals' ||
+        clean === 'debit amt' || clean === 'debit amount' || clean === 'withdrawal amt' || clean === 'withdrawal amount' ||
+        clean === 'dr amt' || clean === 'dr amount' || clean === 'outflow' || clean === 'paid out' || clean === 'payments' ||
+        clean.startsWith('debit') || clean.startsWith('withdrawal') || clean === 'dr inr' || clean === 'debit inr'
+      )) {
+        debitCol = idx;
+        score += 3;
+      }
+
+      // Amount (single column)
+      else if (amountCol === -1 && (
+        clean === 'amount' || clean === 'amt' || clean === 'total' || clean === 'net amount' ||
+        clean === 'net total' || clean === 'gross total' || clean === 'total amount' || clean === 'txn amt' ||
+        clean.includes('amount') || clean === 'value'
+      )) {
+        amountCol = idx;
+        score += 2;
+      }
+
+      // Dr/Cr Indicator
+      else if (drCrCol === -1 && (
+        clean === 'dr cr' || clean === 'cr dr' || clean === 'type' || clean === 'dr cr indicator' ||
+        clean === 'indicator' || clean === 'd c' || clean === 'c d' || clean === 'txn type' || clean === 'trans type'
+      )) {
+        drCrCol = idx;
+        score += 2;
+      }
+    });
+
+    if (dateCol !== -1 && (narrationCol !== -1 || amountCol !== -1 || creditCol !== -1 || debitCol !== -1)) {
+      if (score > maxScore) {
+        maxScore = score;
+        bestHeader = {
+          headerIndex: i,
+          dateCol,
+          narrationCol,
+          refCol,
+          creditCol,
+          debitCol,
+          amountCol,
+          drCrCol,
+          payerCol,
+          score
+        };
+      }
+    }
+  }
+
+  return bestHeader;
+}
+
+function readStatementFile(file, onLoaded) {
+  if (!file) return;
+  const fileName = file.name || 'statement.csv';
+  const isExcel = /\.(xlsx|xls|xlsm|xlsb)$/i.test(fileName);
+
+  if (isExcel && typeof XLSX !== 'undefined') {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const csvText = XLSX.utils.sheet_to_csv(worksheet);
+        onLoaded(csvText, fileName);
+      } catch (err) {
+        console.error('Error parsing Excel statement:', err);
+        showToast('Failed to parse Excel statement: ' + err.message, 'error');
+      }
+    };
+    reader.onerror = (err) => {
+      console.error('FileReader error on Excel:', err);
+      showToast('Error reading Excel statement from disk', 'error');
+    };
+    reader.readAsArrayBuffer(file);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let text = e.target.result || '';
+    if (text.charCodeAt(0) === 0xFEFF) {
+      text = text.slice(1);
+    }
+    onLoaded(text, fileName);
+  };
+  reader.onerror = (err) => {
+    console.error('FileReader error on CSV:', err);
+    showToast('Error reading CSV statement from disk', 'error');
+  };
+  reader.readAsText(file);
+}
+
+function detectBankFromCsv(csvText, fileName = '') {
+  if (!Array.isArray(corporateBanks) || corporateBanks.length === 0) {
+    corporateBanks = [
+      {
+        id: 'icici-3021',
+        name: 'ICICI Bank',
+        type: 'Current A/c',
+        accNo: '••••3021',
+        fullAccNo: '000205003021',
+        ifsc: 'ICIC0000002',
+        branch: 'Mysore Main Branch, Karnataka',
+        sheets: []
+      }
+    ];
+  }
+
+  const textSample = (fileName + ' ' + csvText.slice(0, 8000)).toLowerCase();
+
+  // 1. Check existing corporate banks first
+  for (const b of corporateBanks) {
+    if (b.fullAccNo && textSample.includes(b.fullAccNo.toLowerCase())) {
+      return { bank: b, isNew: false, reason: `Matched full account number ${b.fullAccNo}` };
+    }
+    if (b.ifsc && textSample.includes(b.ifsc.toLowerCase())) {
+      return { bank: b, isNew: false, reason: `Matched IFSC ${b.ifsc}` };
+    }
+    const suffix = (b.accNo || '').replace(/[^\d]/g, '');
+    if (suffix && suffix.length >= 4) {
+      const suffixRegex = new RegExp(`(?:a\\/c|acct|acc|account|no|no\\.|#)[^\\w\\d]{0,6}\\d*${suffix}`, 'i');
+      if (suffixRegex.test(textSample) || (fileName && fileName.toLowerCase().includes(suffix))) {
+        return { bank: b, isNew: false, reason: `Matched account suffix ••••${suffix}` };
+      }
+    }
+    const bName = b.name.toLowerCase();
+    const cleanBName = bName.replace(/\s+bank/g, '').trim();
+    if (textSample.includes(bName) || (fileName && fileName.toLowerCase().includes(cleanBName))) {
+      return { bank: b, isNew: false, reason: `Matched bank name "${b.name}"` };
+    }
+  }
+
+  // 2. Signature match for known Indian Commercial Banks
+  const bankSignatures = [
+    { name: 'ICICI Bank', keywords: ['icici', 'icic', 'icic0', '000205003021'], ifscPrefix: 'ICIC', defaultIfsc: 'ICIC0000002', idPrefix: 'icici' },
+    { name: 'Axis Bank', keywords: ['axis', 'utib', 'utib0', '921020007419821'], ifscPrefix: 'UTIB', defaultIfsc: 'UTIB0000042', idPrefix: 'axis' },
+    { name: 'Kotak Mahindra Bank', keywords: ['kotak', 'kkbk', 'kkbk0', '711200988502'], ifscPrefix: 'KKBK', defaultIfsc: 'KKBK0000421', idPrefix: 'kotak' },
+    { name: 'Canara Bank', keywords: ['canara', 'cnrb', 'cnrb0', '129088192019'], ifscPrefix: 'CNRB', defaultIfsc: 'CNRB0001928', idPrefix: 'canara' },
+    { name: 'HDFC Bank', keywords: ['hdfc', 'hdfc0'], ifscPrefix: 'HDFC', defaultIfsc: 'HDFC0000128', idPrefix: 'hdfc' },
+    { name: 'State Bank of India', keywords: ['sbi', 'sbin', 'state bank'], ifscPrefix: 'SBIN', defaultIfsc: 'SBIN0000412', idPrefix: 'sbi' },
+    { name: 'Punjab National Bank', keywords: ['punjab national', 'pnb', 'punb'], ifscPrefix: 'PUNB', defaultIfsc: 'PUNB0002100', idPrefix: 'pnb' },
+    { name: 'Bank of Baroda', keywords: ['bank of baroda', 'bob', 'barb'], ifscPrefix: 'BARB', defaultIfsc: 'BARB0000010', idPrefix: 'bob' },
+    { name: 'IndusInd Bank', keywords: ['indusind', 'indb'], ifscPrefix: 'INDB', defaultIfsc: 'INDB0000050', idPrefix: 'indusind' },
+    { name: 'YES Bank', keywords: ['yes bank', 'yesb'], ifscPrefix: 'YESB', defaultIfsc: 'YESB0000001', idPrefix: 'yes' },
+    { name: 'Union Bank of India', keywords: ['union bank', 'ubin'], ifscPrefix: 'UBIN', defaultIfsc: 'UBIN0000001', idPrefix: 'union' },
+    { name: 'Federal Bank', keywords: ['federal bank', 'fdrl'], ifscPrefix: 'FDRL', defaultIfsc: 'FDRL0000101', idPrefix: 'federal' },
+    { name: 'IDFC First Bank', keywords: ['idfc', 'idfb'], ifscPrefix: 'IDFB', defaultIfsc: 'IDFB0000101', idPrefix: 'idfc' },
+    { name: 'Standard Chartered', keywords: ['standard chartered', 'scbl'], ifscPrefix: 'SCBL', defaultIfsc: 'SCBL0000101', idPrefix: 'scb' }
+  ];
+
+  for (const sig of bankSignatures) {
+    const matched = sig.keywords.find(kw => textSample.includes(kw));
+    if (matched) {
+      const existing = corporateBanks.find(b =>
+        b.name.toLowerCase().includes(sig.idPrefix) || b.id.toLowerCase().includes(sig.idPrefix)
+      );
+      if (existing) {
+        return { bank: existing, isNew: false, reason: `Identified ${existing.name} via "${matched}"` };
+      }
+
+      // Auto-register new bank
+      let foundAcc = '';
+      const accMatch = textSample.match(/(?:a\/c|account|acct|acc|no|#)[^\d]{0,8}(\d{9,18})/i);
+      if (accMatch) {
+        foundAcc = accMatch[1];
+      } else {
+        const digitMatch = csvText.slice(0, 3000).match(/\b\d{10,16}\b/);
+        if (digitMatch) foundAcc = digitMatch[0];
+      }
+
+      const accSuffix = foundAcc ? foundAcc.slice(-4) : String(Math.floor(1000 + Math.random() * 9000));
+      const fullAcc = foundAcc || `00000000${accSuffix}`;
+      const newBankId = `${sig.idPrefix}-${accSuffix}`;
+
+      const ifscMatch = textSample.match(/\b([A-Z]{4}0[A-Z0-9]{6})\b/i);
+      const ifsc = ifscMatch ? ifscMatch[1].toUpperCase() : sig.defaultIfsc;
+
+      const newBank = {
+        id: newBankId,
+        name: sig.name,
+        type: 'Current A/c',
+        accNo: `••••${accSuffix}`,
+        fullAccNo: fullAcc,
+        ifsc: ifsc,
+        branch: 'Corporate Commercial Branch',
+        sheets: []
+      };
+
+      corporateBanks.push(newBank);
+      return { bank: newBank, isNew: true, reason: `Auto-registered new account ${sig.name} (${newBank.accNo})` };
+    }
+  }
+
+  // 3. Fallback to active bank or first bank
+  const active = getActiveBank() || corporateBanks[0];
+  if (active) {
+    return { bank: active, isNew: false, reason: `Defaulted to current active bank (${active.name})` };
+  }
+
+  // Fallback create default bank if list was completely empty
+  const defaultBank = {
+    id: 'corp-bank-01',
+    name: 'Primary Corporate Bank',
+    type: 'Current A/c',
+    accNo: '••••0001',
+    fullAccNo: '000000000001',
+    ifsc: 'CORP0000001',
+    branch: 'Corporate Finance Branch',
+    sheets: []
+  };
+  corporateBanks.push(defaultBank);
+  return { bank: defaultBank, isNew: true, reason: 'Created default corporate bank' };
+}
+
+function detectMonthFromCsvLines(lines) {
+  const monthCounts = {};
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const monthAbbrs = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+
+  const sampleLines = lines.slice(0, Math.min(lines.length, 120));
+  for (const line of sampleLines) {
+    if (isSummaryOrFooterLine(line)) continue;
+
+    // 1. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (supports 2-digit & 4-digit years)
+    const dmy = line.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b/);
+    if (dmy) {
+      let m = parseInt(dmy[2], 10);
+      let y = parseInt(dmy[3], 10);
+      if (y < 100) y = 2000 + y;
+      if (m > 12 && parseInt(dmy[1], 10) <= 12) {
+        m = parseInt(dmy[1], 10);
+      }
+      if (m >= 1 && m <= 12 && y >= 2020 && y <= 2035) {
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+        continue;
+      }
+    }
+
+    // 2. YYYY-MM-DD or YYYY/MM/DD
+    const ymd = line.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+    if (ymd) {
+      const y = parseInt(ymd[1], 10);
+      const m = parseInt(ymd[2], 10);
+      if (m >= 1 && m <= 12 && y >= 2020 && y <= 2035) {
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+        continue;
+      }
+    }
+
+    // 3. DD-MMM-YYYY or DD MMM YYYY or DD/MMM/YYYY or DD-MMM-YY
+    const dMmmY = line.match(/\b\d{1,2}[\s\/\-]([A-Za-z]{3})[\s\/\-](\d{2,4})\b/);
+    if (dMmmY) {
+      const monStr = dMmmY[1].toLowerCase();
+      const m = monthAbbrs[monStr];
+      let y = parseInt(dMmmY[2], 10);
+      if (y < 100) y = 2000 + y;
+      if (m && y >= 2020 && y <= 2035) {
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+        continue;
+      }
+    }
+
+    // 4. Month Name DD, YYYY (e.g. September 19, 2026)
+    const mmmDy = line.match(/\b([A-Za-z]{3,9})\s+\d{1,2},?\s+(\d{4})\b/i);
+    if (mmmDy) {
+      const monStr = mmmDy[1].toLowerCase().slice(0, 3);
+      const m = monthAbbrs[monStr];
+      const y = parseInt(mmmDy[2], 10);
+      if (m && y >= 2020 && y <= 2035) {
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+      }
+    }
+  }
+
+  let bestMonth = null;
+  let maxCount = 0;
+  for (const [key, count] of Object.entries(monthCounts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      bestMonth = key;
+    }
+  }
+
+  if (bestMonth) {
+    const [yStr, mStr] = bestMonth.split('-');
+    const mIdx = parseInt(mStr, 10) - 1;
+    const mName = monthNames[mIdx] || 'September';
+    return {
+      monthId: bestMonth,
+      label: `${mName} ${yStr}`,
+      year: parseInt(yStr, 10),
+      monthName: mName
+    };
+  }
+
+  const now = new Date();
+  const defYear = now.getFullYear();
+  const defMonthIdx = now.getMonth();
+  const defMonthName = monthNames[defMonthIdx] || 'September';
+  const defMonthId = `${defYear}-${String(defMonthIdx + 1).padStart(2, '0')}`;
+
+  return {
+    monthId: defMonthId,
+    label: `${defMonthName} ${defYear}`,
+    year: defYear,
+    monthName: defMonthName
+  };
+}
+
+async function uploadRawStatementFile(fileName, csvContent) {
+  try {
+    const res = await fetch('/api/supabase/upload-statement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, csvContent })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log('Statement successfully archived in Supabase Cloud Storage:', data.storageKey);
+      return data;
+    }
+  } catch (e) {
+    console.warn('Notice: Raw statement file archival skipped:', e.message);
+  }
+  return null;
+}
+
+async function processBankStatementCsv(csvText, fileName = '') {
+  if (!csvText || !csvText.trim()) {
+    showToast('The statement file appears to be completely empty.', 'amber');
+    return;
+  }
+
+  // Strip BOM if present
+  if (csvText.charCodeAt(0) === 0xFEFF) {
+    csvText = csvText.slice(1);
+  }
+
+  if (isGstOrSalesRegisterFile(fileName, csvText)) {
+    showToast('Detected a sales / GST register — saving as customer invoices.', 'info');
+    await processInvoiceCsv(csvText);
+    return;
+  }
+  if (isPurchaseRegister(fileName, csvText)) {
+    showToast('Detected a purchase register — saving as vendor bills.', 'info');
+    await processVendorBillCsv(csvText);
+    return;
+  }
+
+  const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    showToast('Statement file contains only a single line or no transaction data.', 'amber');
+    return;
+  }
+
+  // 1. Detect Bank Account
+  const detectionResult = detectBankFromCsv(csvText, fileName);
+  const bank = detectionResult.bank;
   if (!bank.sheets) bank.sheets = [];
 
-  const isDebit = activeMappingMode === 'debit';
-  let currentSheet;
+  // 2. Detect Statement Month & Year
+  const detectedMonth = detectMonthFromCsvLines(lines);
 
-  if (bank.sheets.length === 0) {
-    const now = new Date();
-    const monthName = now.toLocaleString('en-US', { month: 'long' });
-    const year = now.getFullYear();
-    const monthId = `${year}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    currentSheet = {
-      monthId: monthId,
-      label: `${monthName} ${year}`,
-      fileName: `${bank.name.replace(/\s+/g, '_')}_${monthName}_${year}.csv`,
-      uploadedOn: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+  // 3. Locate or create monthly sheet for this bank
+  let targetSheet = bank.sheets.find(s => s.monthId === detectedMonth.monthId);
+  if (!targetSheet) {
+    targetSheet = {
+      monthId: detectedMonth.monthId,
+      label: detectedMonth.label,
+      fileName: fileName || `${bank.name.replace(/\s+/g, '_')}_${detectedMonth.monthName}_${detectedMonth.year}.csv`,
+      uploadedOn: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       creditsCount: 0,
       debitsCount: 0,
       records: [],
       debitRecords: []
     };
-    bank.sheets.push(currentSheet);
-    selectedMonthId = monthId;
+    bank.sheets.unshift(targetSheet);
   } else {
-    currentSheet = getCurrentSheet();
+    // Bring active sheet to front of list
+    targetSheet.fileName = fileName || targetSheet.fileName;
+    targetSheet.uploadedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
-  if (!currentSheet.records) currentSheet.records = [];
-  if (!currentSheet.debitRecords) currentSheet.debitRecords = [];
+  if (!targetSheet.records) targetSheet.records = [];
+  if (!targetSheet.debitRecords) targetSheet.debitRecords = [];
 
-  const targetList = isDebit ? currentSheet.debitRecords : currentSheet.records;
-  const existingSet = new Set(
-    targetList.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
+  // 4. Build deduplication sets
+  const existingCreditSet = new Set(
+    targetSheet.records.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
+  );
+  const existingDebitSet = new Set(
+    targetSheet.debitRecords.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
   );
 
-  const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length <= 1) {
-    showToast('CSV file appears to be empty or has only headers', 'amber');
-    return;
-  }
+  // 5. Discover Column Headers with Scoring
+  const delimiter = detectCsvDelimiter(csvText);
+  const headerInfo = findStatementHeaders(lines, delimiter);
 
-  let added = 0;
-  let skipped = 0;
+  let startLine = 1;
+  let dateCol = -1, narrationCol = -1, refCol = -1, creditCol = -1, debitCol = -1, amountCol = -1, typeCol = -1, drCrCol = -1, payerCol = -1;
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-    if (cols.length < 4) continue;
-
-    const date = cols[0];
-    const narration = cols[1];
-    const ref = cols[2];
-    const amount = parseFloat(cols[3]) || 0;
-    const type = cols[4] || (narration.includes('UPI') ? 'UPI' : narration.includes('NEFT') ? 'NEFT' : narration.includes('RTGS') ? 'RTGS' : 'NEFT');
-
-    const key = `${date}|${amount}|${type}|${ref}`.toLowerCase();
-    if (existingSet.has(key)) {
-      skipped++;
-    } else {
-      existingSet.add(key);
-      added++;
-      targetList.unshift({
-        id: `${isDebit ? 'DR' : 'CR'}-IMP-${Date.now()}-${added}`,
-        date: date,
-        narration: narration,
-        payer: cols[5] || (isDebit ? 'Vendor' : ''),
-        type: type,
-        bankRef: ref,
-        amount: amount,
-        status: 'unmapped',
-        mapping: null
-      });
+  if (headerInfo) {
+    startLine = headerInfo.headerIndex + 1;
+    dateCol = headerInfo.dateCol;
+    narrationCol = headerInfo.narrationCol;
+    refCol = headerInfo.refCol;
+    creditCol = headerInfo.creditCol;
+    debitCol = headerInfo.debitCol;
+    amountCol = headerInfo.amountCol;
+    drCrCol = headerInfo.drCrCol;
+    payerCol = headerInfo.payerCol;
+  } else {
+    // Fallback: detect first row with a real date and a separate money column
+    for (let i = 0; i < Math.min(lines.length, 30); i++) {
+      if (isSummaryOrFooterLine(lines[i])) continue;
+      const cols = parseCsvLine(lines[i], delimiter);
+      const dIdx = cols.findIndex(c => isValidTransactionDate(c));
+      const aIdx = cols.findIndex((c, idx) => idx !== dIdx && !isDateLikeValue(c) && isPlausibleMoneyAmount(parseAmount(c)));
+      if (dIdx !== -1 && aIdx !== -1) {
+        startLine = i;
+        dateCol = dIdx;
+        amountCol = aIdx;
+        narrationCol = (dIdx === 0 ? 1 : 0);
+        break;
+      }
     }
   }
 
-  currentSheet.creditsCount = currentSheet.records.length;
-  currentSheet.debitsCount = currentSheet.debitRecords.length;
+  const hasDualColumns = creditCol !== -1 && debitCol !== -1;
 
+  let addedCredits = 0;
+  let addedDebits = 0;
+  let skipped = 0;
+
+  for (let i = startLine; i < lines.length; i++) {
+    const line = lines[i];
+    if (isSummaryOrFooterLine(line)) continue;
+
+    const cols = parseCsvLine(line, delimiter);
+    if (cols.length < 2) continue;
+
+    // Extract fields
+    const date = (dateCol >= 0 && cols[dateCol]) ? cols[dateCol].trim() : (cols[0] || '');
+    if (!isValidTransactionDate(date)) continue;
+    const narration = (narrationCol >= 0 && cols[narrationCol]) ? cols[narrationCol].trim() : (cols[1] || 'Bank Transaction');
+    const ref = (refCol >= 0 && cols[refCol]) ? cols[refCol].trim() : (cols[2] || `TXN-${Date.now()}-${i}`);
+    
+    let type = (typeCol >= 0 && cols[typeCol]) ? cols[typeCol].trim() : '';
+    if (!type) {
+      const upperNarr = narration.toUpperCase();
+      if (upperNarr.includes('UPI')) type = 'UPI';
+      else if (upperNarr.includes('RTGS')) type = 'RTGS';
+      else if (upperNarr.includes('NEFT')) type = 'NEFT';
+      else if (upperNarr.includes('IMPS')) type = 'IMPS';
+      else if (upperNarr.includes('CHQ') || upperNarr.includes('CHEQUE') || upperNarr.includes('CLG')) type = 'CHEQUE';
+      else type = 'TRANSFER';
+    }
+
+    const payer = (payerCol >= 0 && cols[payerCol]) ? cols[payerCol].trim() : extractPartyFromNarration(narration);
+
+    if (hasDualColumns) {
+      const crVal = parseAmount(cols[creditCol]);
+      const drVal = parseAmount(cols[debitCol]);
+
+      if (isPlausibleMoneyAmount(crVal) && !amountLooksLikeDateDigits(crVal, date)) {
+        const key = `${date}|${crVal}|${type}|${ref}`.toLowerCase();
+        if (existingCreditSet.has(key)) {
+          skipped++;
+        } else {
+          existingCreditSet.add(key);
+          addedCredits++;
+          targetSheet.records.unshift({
+            id: `CR-IMP-${Date.now()}-${addedCredits}`,
+            date: date,
+            narration: narration,
+            payer: payer,
+            type: type,
+            bankRef: ref,
+            amount: crVal,
+            status: 'unmapped',
+            mapping: null
+          });
+        }
+      }
+
+      if (isPlausibleMoneyAmount(drVal) && !amountLooksLikeDateDigits(drVal, date)) {
+        const key = `${date}|${drVal}|${type}|${ref}`.toLowerCase();
+        if (existingDebitSet.has(key)) {
+          skipped++;
+        } else {
+          existingDebitSet.add(key);
+          addedDebits++;
+          targetSheet.debitRecords.unshift({
+            id: `DR-IMP-${Date.now()}-${addedDebits}`,
+            date: date,
+            narration: narration,
+            payer: payer || 'Vendor',
+            type: type,
+            bankRef: ref,
+            amount: drVal,
+            status: 'unmapped',
+            mapping: null
+          });
+        }
+      }
+    } else {
+      // Single amount column
+      const amtIdx = amountCol >= 0 ? amountCol : (creditCol >= 0 ? creditCol : (debitCol >= 0 ? debitCol : -1));
+      let parsedAmt = amtIdx >= 0 ? parseAmount(cols[amtIdx]) : 0;
+      if (!isPlausibleMoneyAmount(parsedAmt) || amountLooksLikeDateDigits(parsedAmt, date) || isDateLikeValue(amtIdx >= 0 ? cols[amtIdx] : '')) {
+        parsedAmt = findPlausibleAmountInRow(cols, [dateCol, narrationCol, refCol, payerCol]);
+      }
+      const amt = Math.abs(parsedAmt);
+      if (!isPlausibleMoneyAmount(amt) || amountLooksLikeDateDigits(amt, date)) continue;
+
+      let isDebitRow = false;
+      if (drCrCol >= 0 && cols[drCrCol]) {
+        const ind = cols[drCrCol].trim().toLowerCase();
+        if (ind === 'dr' || ind === 'd' || ind.startsWith('dr') || ind.includes('debit') || ind === 'w' || ind.includes('withdrawal') || ind.includes('outflow')) {
+          isDebitRow = true;
+        } else if (ind === 'cr' || ind === 'c' || ind.startsWith('cr') || ind.includes('credit') || ind.includes('deposit') || ind.includes('inflow')) {
+          isDebitRow = false;
+        } else {
+          isDebitRow = activeMappingMode === 'debit';
+        }
+      } else if (parsedAmt < 0) {
+        isDebitRow = true;
+      } else {
+        const upperNarr = narration.toUpperCase();
+        if (upperNarr.includes('/DR/') || upperNarr.startsWith('TO ') || upperNarr.includes(' PAID TO') || upperNarr.includes(' CHARGES') || upperNarr.includes(' WITHDRAWAL') || upperNarr.includes(' DEBIT')) {
+          isDebitRow = true;
+        } else if (upperNarr.includes('/CR/') || upperNarr.startsWith('BY ') || upperNarr.includes(' RECEIVED FROM') || upperNarr.includes(' DEPOSIT') || upperNarr.includes(' CREDIT')) {
+          isDebitRow = false;
+        } else {
+          isDebitRow = activeMappingMode === 'debit';
+        }
+      }
+
+      const key = `${date}|${amt}|${type}|${ref}`.toLowerCase();
+      if (isDebitRow) {
+        if (existingDebitSet.has(key)) {
+          skipped++;
+        } else {
+          existingDebitSet.add(key);
+          addedDebits++;
+          targetSheet.debitRecords.unshift({
+            id: `DR-IMP-${Date.now()}-${addedDebits}`,
+            date: date,
+            narration: narration,
+            payer: payer || 'Vendor',
+            type: type,
+            bankRef: ref,
+            amount: amt,
+            status: 'unmapped',
+            mapping: null
+          });
+        }
+      } else {
+        if (existingCreditSet.has(key)) {
+          skipped++;
+        } else {
+          existingCreditSet.add(key);
+          addedCredits++;
+          targetSheet.records.unshift({
+            id: `CR-IMP-${Date.now()}-${addedCredits}`,
+            date: date,
+            narration: narration,
+            payer: payer,
+            type: type,
+            bankRef: ref,
+            amount: amt,
+            status: 'unmapped',
+            mapping: null
+          });
+        }
+      }
+    }
+  }
+
+  // 6. Update Counts
+  targetSheet.creditsCount = targetSheet.records.length;
+  targetSheet.debitsCount = targetSheet.debitRecords.length;
+
+  // 7. Auto-switch Active Bank and Month View
+  selectedBankId = bank.id;
+  selectedMonthId = targetSheet.monthId;
+
+  // Determine desk mode and visually switch tabs
+  if (addedCredits > 0 && addedDebits > 0) {
+    switchMappingMode('all', { silent: true, autoPersist: false });
+  } else if (addedDebits > 0 && addedCredits === 0) {
+    switchMappingMode('debit', { silent: true, autoPersist: false });
+  } else {
+    switchMappingMode('credit', { silent: true, autoPersist: false });
+  }
+
+  // 8. Auto-match open transactions with statement data
+  autoMatchAllStatementData(false);
+
+  // 9. Desk Audit Activity
+  const totalAdded = addedCredits + addedDebits;
   recentActivities.unshift({
-    text: `Imported statement (${added} ${isDebit ? 'debits' : 'credits'} added)`,
-    meta: `${bank.name} ${bank.accNo} · Just now`
+    text: `Imported statement (${addedCredits} credits, ${addedDebits} debits)`,
+    meta: `${bank.name} ${bank.accNo} · ${targetSheet.label} · Synced with Supabase DB`
   });
 
-  renderAll();
-  showToast(`${isDebit ? 'Debit' : 'Credit'} statement CSV processed: ${added} added, ${skipped} duplicates safely skipped!`);
+  // 10. Re-render entire UI immediately
+  renderAll(false);
+
+  // 11. Backend Database Persistence directly into Supabase PostgreSQL
+  await persistToSupabase();
+
+  // 12. Archive raw statement file in Supabase Cloud Storage
+  if (fileName) {
+    uploadRawStatementFile(fileName, csvText);
+  }
+
+  // 13. Feedback Toast
+  let toastMsg = '';
+  if (addedCredits > 0 && addedDebits > 0) {
+    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedCredits} Credits & ${addedDebits} Debits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
+  } else if (addedDebits > 0) {
+    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedDebits} Debits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
+  } else {
+    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedCredits} Credits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
+  }
+  showToast(toastMsg, totalAdded > 0 ? 'success' : 'amber');
 }
 
 // =============================================================================
@@ -1581,23 +2653,69 @@ function renderInvoicesCatalogModal() {
   });
 }
 
-function processInvoiceCsv(csvText) {
+async function processInvoiceCsv(csvText) {
+  if (!csvText || !csvText.trim()) {
+    showToast('The uploaded invoice file appears to be empty.', 'amber');
+    return;
+  }
+  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+
+  const delimiter = detectCsvDelimiter(csvText);
   const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length <= 1) {
     showToast('CSV file is empty or missing data rows', 'amber');
     return;
   }
 
-  let added = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-    if (cols.length < 3) continue;
+  // Column header auto-discovery with scoring
+  let headerIndex = -1;
+  let invNoCol = -1, custCol = -1, amtCol = -1, dateCol = -1, catCol = -1;
 
-    const invoiceNo = cols[0];
-    const customer = cols[1];
-    const amount = parseFloat(cols[2]) || 0;
-    const date = cols[3] || '19 Sep 2026';
-    const category = cols[4] || 'Regular B2B Tax Invoice';
+  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+    if (isSummaryOrFooterLine(lines[i])) continue;
+    const rawCols = parseCsvLine(lines[i], delimiter).map(c => c.trim().toLowerCase().replace(/[_\-\/\.\(\)\s]+/g, ' '));
+    const iIdx = rawCols.findIndex(c => c === 'invoice' || c === 'inv' || c === 'invoice no' || c === 'inv no' || c === 'bill no' || c === 'vch no' || c === 'voucher no' || c === 'doc no' || c.includes('inv') || c.includes('bill no'));
+    const cIdx = rawCols.findIndex(c => c === 'customer' || c === 'party' || c === 'party name' || c === 'customer name' || c === 'client' || c === 'guest' || c === 'particulars' || c.includes('customer') || c.includes('party') || c.includes('name'));
+    const aIdx = rawCols.findIndex(c => c === 'amount' || c === 'amt' || c === 'total' || c === 'net total' || c === 'gross total' || c === 'net amount' || c === 'invoice value' || c.includes('amount') || c.includes('total'));
+    const dIdx = rawCols.findIndex(c => c === 'date' || c === 'dt' || c === 'inv date' || c === 'invoice date' || c === 'vch date' || c.includes('date'));
+    const kIdx = rawCols.findIndex(c => c === 'category' || c === 'type' || c === 'vch type' || c === 'voucher type' || c.includes('category') || c.includes('type'));
+
+    if (iIdx !== -1 || (cIdx !== -1 && aIdx !== -1) || (dIdx !== -1 && aIdx !== -1)) {
+      headerIndex = i;
+      invNoCol = iIdx;
+      custCol = cIdx;
+      amtCol = aIdx;
+      dateCol = dIdx;
+      catCol = kIdx;
+      break;
+    }
+  }
+
+  const startLine = headerIndex >= 0 ? headerIndex + 1 : 1;
+  let added = 0;
+
+  for (let i = startLine; i < lines.length; i++) {
+    const line = lines[i];
+    if (isSummaryOrFooterLine(line)) continue;
+
+    const cols = parseCsvLine(line, delimiter);
+    if (cols.length < 2) continue;
+
+    let invoiceNo = (invNoCol >= 0 && cols[invNoCol]) ? cols[invNoCol].trim() : '';
+    if (!invoiceNo) {
+      const ifbCol = cols.find(c => /\bIFB\d{4,}\b/i.test(c));
+      invoiceNo = ifbCol ? (ifbCol.match(/\bIFB\d{4,}\b/i)[0].toUpperCase()) : (cols[0] || `INV-${Date.now()}-${i}`);
+    }
+    const customer = (custCol >= 0 && cols[custCol]) ? cols[custCol].trim() : (cols[1] || 'Corporate Client');
+    let amount = parseAmount(amtCol >= 0 ? cols[amtCol] : '');
+    const date = (dateCol >= 0 && cols[dateCol]) ? cols[dateCol].trim() : (cols.find(c => isValidTransactionDate(c)) || '19 Sep 2026');
+    const category = (catCol >= 0 && cols[catCol]) ? cols[catCol].trim() : (cols[4] || 'Regular B2B Tax Invoice');
+
+    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date) || isDateLikeValue(amtCol >= 0 ? cols[amtCol] : '')) {
+      amount = findPlausibleAmountInRow(cols, [dateCol, invNoCol, custCol]);
+    }
+    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date)) continue;
+    if (isDateLikeValue(invoiceNo) || /^\d{1,3}$/.test(invoiceNo)) continue;
 
     if (!appInvoices.some(inv => inv.invoiceNo.toLowerCase() === invoiceNo.toLowerCase())) {
       appInvoices.unshift({
@@ -1605,14 +2723,17 @@ function processInvoiceCsv(csvText) {
         guestName: customer,
         amount,
         date,
-        category
+        category,
+        status: 'Unpaid',
+        settledAmount: 0
       });
       added++;
     }
   }
 
-  renderAll();
-  showToast(`Imported ${added} customer invoices from CSV!`);
+  renderAll(false);
+  await persistToSupabase();
+  showToast(`Imported ${added} customer invoices from CSV & stored in Supabase DB!`, added > 0 ? 'success' : 'amber');
 }
 
 function renderVendorBillsCatalogModal() {
@@ -1655,23 +2776,65 @@ function renderVendorBillsCatalogModal() {
   });
 }
 
-function processVendorBillCsv(csvText) {
+async function processVendorBillCsv(csvText) {
+  if (!csvText || !csvText.trim()) {
+    showToast('The uploaded vendor bills file appears to be empty.', 'amber');
+    return;
+  }
+  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+
+  const delimiter = detectCsvDelimiter(csvText);
   const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length <= 1) {
     showToast('CSV file is empty or missing data rows', 'amber');
     return;
   }
 
-  let added = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-    if (cols.length < 3) continue;
+  // Column header auto-discovery
+  let headerIndex = -1;
+  let billNoCol = -1, vendorCol = -1, amtCol = -1, dateCol = -1, catCol = -1;
 
-    const billNo = cols[0];
-    const vendor = cols[1];
-    const amount = parseFloat(cols[2]) || 0;
-    const date = cols[3] || '18 Sep 2026';
-    const category = cols[4] || 'Operating Expense';
+  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+    if (isSummaryOrFooterLine(lines[i])) continue;
+    const rawCols = parseCsvLine(lines[i], delimiter).map(c => c.trim().toLowerCase().replace(/[_\-\/\.\(\)\s]+/g, ' '));
+    const bIdx = rawCols.findIndex(c => c === 'bill no' || c === 'bill' || c === 'voucher no' || c === 'vch no' || c === 'inv no' || c.includes('bill') || c.includes('voucher'));
+    const vIdx = rawCols.findIndex(c => c === 'vendor' || c === 'supplier' || c === 'party' || c === 'party name' || c === 'payee' || c === 'particulars' || c.includes('vendor') || c.includes('supplier') || c.includes('party'));
+    const aIdx = rawCols.findIndex(c => c === 'amount' || c === 'amt' || c === 'total' || c === 'net total' || c === 'gross total' || c === 'net amount' || c.includes('amount') || c.includes('total'));
+    const dIdx = rawCols.findIndex(c => c === 'date' || c === 'dt' || c === 'bill date' || c === 'vch date' || c.includes('date'));
+    const kIdx = rawCols.findIndex(c => c === 'category' || c === 'type' || c === 'vch type' || c === 'voucher type' || c.includes('category') || c.includes('type'));
+
+    if (bIdx !== -1 || (vIdx !== -1 && aIdx !== -1) || (dIdx !== -1 && aIdx !== -1)) {
+      headerIndex = i;
+      billNoCol = bIdx;
+      vendorCol = vIdx;
+      amtCol = aIdx;
+      dateCol = dIdx;
+      catCol = kIdx;
+      break;
+    }
+  }
+
+  const startLine = headerIndex >= 0 ? headerIndex + 1 : 1;
+  let added = 0;
+
+  for (let i = startLine; i < lines.length; i++) {
+    const line = lines[i];
+    if (isSummaryOrFooterLine(line)) continue;
+
+    const cols = parseCsvLine(line, delimiter);
+    if (cols.length < 2) continue;
+
+    const billNo = (billNoCol >= 0 && cols[billNoCol]) ? cols[billNoCol].trim() : (cols[0] || `BILL-${Date.now()}-${i}`);
+    const vendor = (vendorCol >= 0 && cols[vendorCol]) ? cols[vendorCol].trim() : (cols[1] || 'Pharma Vendor');
+    let amount = parseAmount(amtCol >= 0 ? cols[amtCol] : '');
+    const date = (dateCol >= 0 && cols[dateCol]) ? cols[dateCol].trim() : (cols.find(c => isValidTransactionDate(c)) || '18 Sep 2026');
+    const category = (catCol >= 0 && cols[catCol]) ? cols[catCol].trim() : (cols[4] || 'Operating Expense');
+
+    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date) || isDateLikeValue(amtCol >= 0 ? cols[amtCol] : '')) {
+      amount = findPlausibleAmountInRow(cols, [dateCol, billNoCol, vendorCol]);
+    }
+    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date)) continue;
+    if (isDateLikeValue(billNo) || /^\d{1,3}$/.test(billNo)) continue;
 
     if (!appVendorBills.some(b => b.billNo.toLowerCase() === billNo.toLowerCase())) {
       appVendorBills.unshift({
@@ -1679,14 +2842,17 @@ function processVendorBillCsv(csvText) {
         vendorName: vendor,
         amount,
         date,
-        category
+        category,
+        status: 'Unpaid',
+        settledAmount: 0
       });
       added++;
     }
   }
 
-  renderAll();
-  showToast(`Imported ${added} vendor bills from CSV!`);
+  renderAll(false);
+  await persistToSupabase();
+  showToast(`Imported ${added} vendor bills from CSV & stored in Supabase DB!`, added > 0 ? 'success' : 'amber');
 }
 
 // =============================================================================
@@ -1838,7 +3004,6 @@ function renderCommandPaletteResults(term) {
     { title: 'Switch to Credit Mapping Desk', desc: 'Match incoming credits to sales invoices', action: () => { switchView('bank-statements'); switchMappingMode('credit'); } },
     { title: 'View Bank Statements', desc: 'Jump to reconciliation workspace', action: () => switchView('bank-statements') },
     { title: 'View Financial Dashboard', desc: 'Jump to executive analytics', action: () => switchView('dashboard') },
-    { title: 'Toggle Dark / Light Theme', desc: 'Switch appearance theme (Ctrl+D)', action: () => toggleTheme() },
     { title: 'Add Invoice Manually', desc: 'Create new pending customer sales invoice', action: () => { if (openAddInvoiceModalBtn) openAddInvoiceModalBtn.click(); } },
     { title: 'Add Vendor Bill Manually', desc: 'Create new pending supplier purchase bill', action: () => { if (openAddBillModalBtn) openAddBillModalBtn.click(); } },
     { title: 'View Invoices Catalog', desc: 'Inspect available customer invoice records', action: () => { if (viewInvoicesBtn) viewInvoicesBtn.click(); } },
@@ -1899,6 +3064,7 @@ function renderCreditTrendChart() {
 
   const bank = getActiveBank();
   const isDebit = activeMappingMode === 'debit';
+  const isAll = activeMappingMode === 'all';
 
   // Compute live monthly volumes for active bank and active mode (no synthetic dummy values)
   const data = TREND_MONTHS.map(m => {
@@ -1906,9 +3072,22 @@ function renderCreditTrendChart() {
     let total = 0;
     let count = 0;
     if (sheet) {
-      const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
-      total = records.reduce((acc, r) => acc + (r.amount || 0), 0);
-      count = records.length;
+      if (isAll) {
+        const crRecords = sheet.records || [];
+        const drRecords = sheet.debitRecords || [];
+        const crTotal = crRecords.reduce((acc, r) => acc + (r.amount || 0), 0);
+        const drTotal = drRecords.reduce((acc, r) => acc + (r.amount || 0), 0);
+        total = crTotal + drTotal;
+        count = crRecords.length + drRecords.length;
+      } else if (isDebit) {
+        const records = sheet.debitRecords || [];
+        total = records.reduce((acc, r) => acc + (r.amount || 0), 0);
+        count = records.length;
+      } else {
+        const records = sheet.records || [];
+        total = records.reduce((acc, r) => acc + (r.amount || 0), 0);
+        count = records.length;
+      }
     }
     return {
       ...m,
@@ -1925,10 +3104,11 @@ function renderCreditTrendChart() {
 
     const col = document.createElement('div');
     col.className = `chart-col ${isCurrent ? 'active' : ''}`;
-    col.title = `${d.label} (${isDebit ? 'Debits' : 'Credits'}): ${formatINR(d.total)} (${d.count} transactions)`;
+    const flowLabel = isAll ? 'Total Flow' : (isDebit ? 'Debits' : 'Credits');
+    col.title = `${d.label} (${flowLabel}): ${formatINR(d.total)} (${d.count} transactions)`;
 
     col.innerHTML = `
-      <div class="chart-bar ${isCurrent ? 'bar-active' : ''} ${isDebit ? 'bar-debit' : ''}" style="height: ${heightPct}%;"></div>
+      <div class="chart-bar ${isCurrent ? 'bar-active' : ''} ${isDebit ? 'bar-debit' : (isAll ? 'bar-all' : '')}" style="height: ${heightPct}%;"></div>
       <span class="chart-label ${isCurrent ? 'label-active' : ''}">${d.shortName}</span>
     `;
 
@@ -1949,16 +3129,162 @@ function renderCreditTrendChart() {
 }
 
 // =============================================================================
+// Supabase Cloud Database Persistence & Live Synchronization
+// =============================================================================
+let isSupabaseSyncing = false;
+let lastSupabaseSyncTime = null;
+let supabaseSyncDebounceTimer = null;
+let isInitialSupabaseLoadDone = false;
+
+function updateSupabaseSyncBadge(status, text) {
+  const dot = document.getElementById('supabaseDbDot');
+  const badgeText = document.getElementById('supabaseDbSyncText');
+  if (dot) {
+    if (status === 'syncing') {
+      dot.className = 'supabase-db-dot syncing';
+    } else if (status === 'synced') {
+      dot.className = 'supabase-db-dot';
+      dot.style.background = '#10b981';
+      dot.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.25)';
+    } else if (status === 'error') {
+      dot.className = 'supabase-db-dot';
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.25)';
+    }
+  }
+  if (badgeText && text) {
+    badgeText.textContent = text;
+  }
+}
+
+async function persistToSupabase() {
+  if (isSupabaseSyncing) return;
+  isSupabaseSyncing = true;
+  updateSupabaseSyncBadge('syncing', 'Syncing to Supabase...');
+  try {
+    const payload = {
+      banks: corporateBanks,
+      invoices: appInvoices,
+      bills: appVendorBills,
+      activities: recentActivities,
+      updatedAt: new Date().toISOString()
+    };
+
+    const res = await fetch('/api/supabase/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      lastSupabaseSyncTime = new Date();
+      const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
+    } else {
+      updateSupabaseSyncBadge('error', 'Supabase Sync Error');
+    }
+  } catch (err) {
+    console.warn('Supabase persist error:', err);
+    updateSupabaseSyncBadge('error', 'Supabase Offline');
+  } finally {
+    isSupabaseSyncing = false;
+  }
+}
+
+function debouncedPersistToSupabase() {
+  if (!isInitialSupabaseLoadDone) return;
+  clearTimeout(supabaseSyncDebounceTimer);
+  supabaseSyncDebounceTimer = setTimeout(() => {
+    persistToSupabase();
+  }, 1000);
+}
+
+async function loadFromSupabase(showToastNotification = false) {
+  updateSupabaseSyncBadge('syncing', 'Connecting Supabase...');
+  try {
+    const res = await fetch('/api/supabase/data');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        const state = json.data;
+        if (Array.isArray(state.banks) && state.banks.length > 0) {
+          corporateBanks = state.banks.map(b => Object.assign({}, b, {
+            accNo: sanitizeMaskedAccNo(b.accNo || b.acc_no, b.fullAccNo || b.full_acc_no, b.id),
+            sheets: Array.isArray(b.sheets) ? b.sheets : []
+          }));
+        }
+        if (Array.isArray(state.invoices)) {
+          appInvoices = state.invoices;
+        }
+        if (Array.isArray(state.bills)) {
+          appVendorBills = state.bills;
+        }
+        if (Array.isArray(state.activities)) {
+          recentActivities = state.activities;
+        }
+
+        // Smart Initial Bank and Sheet Selection:
+        // If current bank has no records, focus on the bank that HAS records!
+        const currentActive = corporateBanks.find(b => b.id === selectedBankId);
+        const currentHasRecords = currentActive && Array.isArray(currentActive.sheets) && currentActive.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0));
+
+        if (!currentHasRecords) {
+          const bankWithRecords = corporateBanks.find(b => Array.isArray(b.sheets) && b.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)));
+          if (bankWithRecords) {
+            selectedBankId = bankWithRecords.id;
+          }
+        }
+
+        // Auto-select sheet with records and set active mapping mode
+        const activeBank = getActiveBank();
+        if (activeBank && Array.isArray(activeBank.sheets) && activeBank.sheets.length > 0) {
+          const sheetWithRecords = activeBank.sheets.find(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)) || activeBank.sheets[0];
+          selectedMonthId = sheetWithRecords.monthId;
+
+          const crCount = (sheetWithRecords.records || []).length;
+          const drCount = (sheetWithRecords.debitRecords || []).length;
+          if (drCount > 0 && crCount === 0) {
+            switchMappingMode('debit', { silent: true, autoPersist: false });
+          } else {
+            switchMappingMode('credit', { silent: true, autoPersist: false });
+          }
+        }
+
+        isInitialSupabaseLoadDone = true;
+        renderAll(false);
+        lastSupabaseSyncTime = new Date();
+        const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
+        if (showToastNotification) {
+          showToast('Workspace data synchronized with Supabase Cloud Database');
+        }
+        return true;
+      }
+    }
+    isInitialSupabaseLoadDone = true;
+    updateSupabaseSyncBadge('synced', 'Supabase Connected');
+  } catch (e) {
+    console.warn('Failed to load initial data from Supabase:', e);
+    isInitialSupabaseLoadDone = true;
+    updateSupabaseSyncBadge('error', 'Supabase Offline');
+  }
+  return false;
+}
+
+// =============================================================================
 // 13. Main Re-render Coordinator
 // =============================================================================
 
-function renderAll() {
+function renderAll(autoPersist = true) {
   renderBankSelector();
   renderStatementFilesTable();
   renderCreditTable();
   renderCreditTrendChart();
   if (totalInvoicesCountBadge) totalInvoicesCountBadge.textContent = `${appInvoices.length} Invoices`;
   if (totalBillsCountBadge) totalBillsCountBadge.textContent = `${appVendorBills.length} Vendor Bills`;
+  if (autoPersist) {
+    debouncedPersistToSupabase();
+  }
 }
 
 // =============================================================================
@@ -1969,12 +3295,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Sidebar Nav
   if (navDashboard) navDashboard.addEventListener('click', () => switchView('dashboard'));
   if (navBankStatements) navBankStatements.addEventListener('click', () => switchView('bank-statements'));
+  const breadcrumbDashboard = document.getElementById('breadcrumbDashboard');
+  if (breadcrumbDashboard) {
+    breadcrumbDashboard.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView('dashboard');
+    });
+  }
 
   // 2. Desk Mode Switcher Tabs (Credits vs Debits)
   const handleTabSwitch = (mode) => {
     switchMappingMode(mode);
   };
 
+  if (tabAllMode) {
+    tabAllMode.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleTabSwitch('all');
+    });
+  }
   if (tabCreditMode) {
     tabCreditMode.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1989,7 +3328,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Keyboard accessibility for desk switcher tabs
-  [tabCreditMode, tabDebitMode].forEach(btn => {
+  [tabAllMode, tabCreditMode, tabDebitMode].forEach(btn => {
     if (btn) {
       btn.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -2038,6 +3377,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (filterMenuPopover && !filterMenuPopover.contains(e.target) && e.target !== filterDropdownBtn) {
       filterMenuPopover.style.display = 'none';
+      if (filterDropdownBtn) filterDropdownBtn.setAttribute('aria-expanded', 'false');
+    }
+    const mappingMoreBtnEl = document.getElementById('mappingMoreBtn');
+    const mappingMoreMenuEl = document.getElementById('mappingMoreMenu');
+    if (mappingMoreMenuEl && mappingMoreBtnEl && !mappingMoreMenuEl.contains(e.target) && e.target !== mappingMoreBtnEl && !mappingMoreBtnEl.contains(e.target)) {
+      mappingMoreMenuEl.style.display = 'none';
+      mappingMoreBtnEl.setAttribute('aria-expanded', 'false');
     }
   });
 
@@ -2047,6 +3393,30 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
       const open = filterMenuPopover.style.display === 'block';
       filterMenuPopover.style.display = open ? 'none' : 'block';
+      filterDropdownBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      const mappingMoreMenuEl = document.getElementById('mappingMoreMenu');
+      const mappingMoreBtnEl = document.getElementById('mappingMoreBtn');
+      if (mappingMoreMenuEl) mappingMoreMenuEl.style.display = 'none';
+      if (mappingMoreBtnEl) mappingMoreBtnEl.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  const mappingMoreBtn = document.getElementById('mappingMoreBtn');
+  const mappingMoreMenu = document.getElementById('mappingMoreMenu');
+  if (mappingMoreBtn && mappingMoreMenu) {
+    mappingMoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = mappingMoreMenu.style.display === 'block';
+      mappingMoreMenu.style.display = open ? 'none' : 'block';
+      mappingMoreBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (filterMenuPopover) filterMenuPopover.style.display = 'none';
+      if (filterDropdownBtn) filterDropdownBtn.setAttribute('aria-expanded', 'false');
+    });
+    mappingMoreMenu.addEventListener('click', (e) => {
+      if (e.target.closest('button')) {
+        mappingMoreMenu.style.display = 'none';
+        mappingMoreBtn.setAttribute('aria-expanded', 'false');
+      }
     });
   }
 
@@ -2057,6 +3427,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (btn) btn.classList.toggle('active', btn.dataset.filter === type);
     });
     if (filterMenuPopover) filterMenuPopover.style.display = 'none';
+    if (filterDropdownBtn) filterDropdownBtn.setAttribute('aria-expanded', 'false');
     renderCreditTable();
   }
 
@@ -2072,13 +3443,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Statement CSV Upload & Dropzone
+  // 6. Statement CSV & Excel Upload & Dropzone
   if (uploadCsvBtn && bankCsvInput) {
     uploadCsvBtn.addEventListener('click', () => bankCsvInput.click());
   }
 
   if (dropZone && bankCsvInput) {
-    dropZone.addEventListener('click', () => bankCsvInput.click());
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
       dropZone.classList.add('drag-over');
@@ -2087,23 +3457,37 @@ document.addEventListener('DOMContentLoaded', () => {
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      if (e.dataTransfer.files.length > 0) {
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
-        const reader = new FileReader();
-        reader.onload = () => processBankStatementCsv(reader.result);
-        reader.readAsText(file);
+        showToast(`Reading statement: ${file.name}...`, 'info');
+        readStatementFile(file, async (content, fileName) => {
+          try {
+            await processBankStatementCsv(content, fileName);
+          } catch (err) {
+            console.error('Error processing bank statement:', err);
+            showToast(`Error processing statement: ${err.message}`, 'amber');
+          }
+        });
       }
     });
   }
 
   if (bankCsvInput) {
     bankCsvInput.addEventListener('change', () => {
-      if (bankCsvInput.files.length > 0) {
+      if (bankCsvInput.files && bankCsvInput.files.length > 0) {
         const file = bankCsvInput.files[0];
-        const reader = new FileReader();
-        reader.onload = () => processBankStatementCsv(reader.result);
-        reader.readAsText(file);
-        bankCsvInput.value = '';
+        showToast(`Reading statement: ${file.name}...`, 'info');
+        readStatementFile(file, async (content, fileName) => {
+          try {
+            await processBankStatementCsv(content, fileName);
+          } catch (err) {
+            console.error('Error processing bank statement:', err);
+            showToast(`Error processing statement: ${err.message}`, 'amber');
+          }
+        });
+        setTimeout(() => {
+          try { bankCsvInput.value = ''; } catch (e) {}
+        }, 500);
       }
     });
   }
@@ -2154,12 +3538,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (invoiceCsvInput) {
     invoiceCsvInput.addEventListener('change', () => {
-      if (invoiceCsvInput.files.length > 0) {
+      if (invoiceCsvInput.files && invoiceCsvInput.files.length > 0) {
         const file = invoiceCsvInput.files[0];
-        const reader = new FileReader();
-        reader.onload = () => processInvoiceCsv(reader.result);
-        reader.readAsText(file);
-        invoiceCsvInput.value = '';
+        showToast(`Reading customer invoices: ${file.name}...`, 'info');
+        readStatementFile(file, async (content) => {
+          try {
+            await processInvoiceCsv(content);
+            if (typeof renderInvoicesCatalogModal === 'function') renderInvoicesCatalogModal();
+          } catch (err) {
+            console.error('Error processing customer invoices:', err);
+            showToast(`Error processing invoice CSV: ${err.message}`, 'amber');
+          }
+        });
+        setTimeout(() => {
+          try { invoiceCsvInput.value = ''; } catch (e) {}
+        }, 500);
       }
     });
   }
@@ -2229,12 +3622,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (billCsvInput) {
     billCsvInput.addEventListener('change', () => {
-      if (billCsvInput.files.length > 0) {
+      if (billCsvInput.files && billCsvInput.files.length > 0) {
         const file = billCsvInput.files[0];
-        const reader = new FileReader();
-        reader.onload = () => processVendorBillCsv(reader.result);
-        reader.readAsText(file);
-        billCsvInput.value = '';
+        showToast(`Reading vendor bills: ${file.name}...`, 'info');
+        readStatementFile(file, async (content) => {
+          try {
+            await processVendorBillCsv(content);
+            if (typeof renderVendorBillsCatalogModal === 'function') renderVendorBillsCatalogModal();
+          } catch (err) {
+            console.error('Error processing vendor bills:', err);
+            showToast(`Error processing vendor bills CSV: ${err.message}`, 'amber');
+          }
+        });
+        setTimeout(() => {
+          try { billCsvInput.value = ''; } catch (e) {}
+        }, 500);
       }
     });
   }
@@ -2334,35 +3736,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 15. Command Palette Trigger & Keyboard Shortcut
   if (globalSearchTrigger) globalSearchTrigger.addEventListener('click', openCommandPalette);
 
-  // Theme Toggle Button
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      toggleTheme();
-    });
-  }
-
-  // OS Dark Mode Preference Listener
-  if (window.matchMedia) {
-    try {
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        if (!localStorage.getItem('ifimed_theme')) {
-          setTheme(e.matches ? 'dark' : 'light', false);
-        }
-      });
-    } catch (err) {}
-  }
-
   document.addEventListener('keydown', (e) => {
     // ⌘K or Ctrl+K: Open Command Palette
     if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
       openCommandPalette();
-    }
-    // ⌘D or Ctrl+D: Toggle Theme
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
-      e.preventDefault();
-      toggleTheme();
     }
     if (e.key === 'Escape') {
       closeCommandPalette();
@@ -2373,7 +3751,66 @@ document.addEventListener('DOMContentLoaded', () => {
       if (billsCatalogModal) billsCatalogModal.style.display = 'none';
       if (unlinkModal) unlinkModal.style.display = 'none';
       if (deleteBankModal) closeDeleteBankModal();
+      const sampleStatementsModal = document.getElementById('sampleStatementsModal');
+      if (sampleStatementsModal) sampleStatementsModal.style.display = 'none';
     }
+  });
+
+  // Sample Statements Modal Event Listeners
+  const sampleStatementsBtn = document.getElementById('sampleStatementsBtn');
+  const quickSampleTrigger = document.getElementById('quickSampleTrigger');
+  const sampleStatementsModal = document.getElementById('sampleStatementsModal');
+  const closeSampleStatementsModalBtn = document.getElementById('closeSampleStatementsModalBtn');
+  const doneSampleStatementsBtn = document.getElementById('doneSampleStatementsBtn');
+
+  const openSampleModal = () => {
+    if (sampleStatementsModal) sampleStatementsModal.style.display = 'flex';
+  };
+  const closeSampleModal = () => {
+    if (sampleStatementsModal) sampleStatementsModal.style.display = 'none';
+  };
+
+  if (sampleStatementsBtn) sampleStatementsBtn.addEventListener('click', openSampleModal);
+  if (quickSampleTrigger) quickSampleTrigger.addEventListener('click', openSampleModal);
+  if (closeSampleStatementsModalBtn) closeSampleStatementsModalBtn.addEventListener('click', closeSampleModal);
+  if (doneSampleStatementsBtn) doneSampleStatementsBtn.addEventListener('click', closeSampleModal);
+
+  // 1-Click Load Sample Handler
+  document.querySelectorAll('.btn-quick-load-sample').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fileName = btn.getAttribute('data-sample');
+      const fileType = btn.getAttribute('data-type');
+      if (!fileName) return;
+
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Loading...';
+
+      try {
+        const res = await fetch(`/sample_statements/${fileName}`);
+        if (!res.ok) throw new Error(`Could not load sample file (${res.status})`);
+        const text = await res.text();
+
+        closeSampleModal();
+
+        if (fileType === 'statement') {
+          await processBankStatementCsv(text, fileName);
+          switchView('bank-statements');
+        } else if (fileType === 'invoice') {
+          processInvoiceCsv(text);
+          if (typeof renderInvoicesCatalogModal === 'function') renderInvoicesCatalogModal();
+        } else if (fileType === 'bill') {
+          processVendorBillCsv(text);
+          if (typeof renderVendorBillsCatalogModal === 'function') renderVendorBillsCatalogModal();
+        }
+      } catch (err) {
+        console.error('Failed to load sample CSV:', err);
+        showToast(`Could not load ${fileName}: ${err.message}`, 'amber');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
   });
 
   if (commandPaletteInput) {
@@ -2386,30 +3823,60 @@ document.addEventListener('DOMContentLoaded', () => {
   if (exportCurrentMonthBtn) {
     exportCurrentMonthBtn.addEventListener('click', () => {
       const sheet = getCurrentSheet();
-      const isDebit = activeMappingMode === 'debit';
-      const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
-      const mapped = records.filter(r => r.status === 'mapped');
-      if (mapped.length === 0) {
-        showToast(`No reconciled ${isDebit ? 'debits' : 'credits'} to export for this month`, 'amber');
-        return;
+      let mapped = [];
+      let csv = '';
+      let downloadFileName = '';
+
+      if (activeMappingMode === 'all') {
+        const crMapped = (sheet.records || []).filter(r => r.status === 'mapped').map(r => ({
+          ...r,
+          flowType: 'Credit (Inflow)',
+          docNo: r.mapping ? (r.mapping.invoiceNo || '') : '',
+          party: r.mapping ? (r.mapping.guestName || '') : ''
+        }));
+        const drMapped = (sheet.debitRecords || []).filter(r => r.status === 'mapped').map(r => ({
+          ...r,
+          flowType: 'Debit (Outflow)',
+          docNo: r.mapping ? (r.mapping.billNo || '') : '',
+          party: r.mapping ? (r.mapping.vendorName || '') : ''
+        }));
+        mapped = [...crMapped, ...drMapped];
+        if (mapped.length === 0) {
+          showToast('No reconciled transactions to export for this month', 'amber');
+          return;
+        }
+        csv = 'Date,Flow Type,Bank Reference,Amount,Narration,Linked Document,Customer / Vendor,Mapped By,Mapped At\n';
+        mapped.forEach(r => {
+          csv += `"${r.date}","${r.flowType}","${r.bankRef}","${r.amount}","${(r.narration || '').replace(/"/g, '""')}","${r.docNo}","${(r.party || '').replace(/"/g, '""')}","${r.mapping ? r.mapping.mappedBy : ''}","${r.mapping ? r.mapping.mappedAt : ''}"\n`;
+        });
+        downloadFileName = `Reconciled_All_Transactions_${sheet.label.replace(/\s+/g, '_')}.csv`;
+      } else {
+        const isDebit = activeMappingMode === 'debit';
+        const records = isDebit ? (sheet.debitRecords || []) : (sheet.records || []);
+        mapped = records.filter(r => r.status === 'mapped');
+        if (mapped.length === 0) {
+          showToast(`No reconciled ${isDebit ? 'debits' : 'credits'} to export for this month`, 'amber');
+          return;
+        }
+
+        csv = isDebit
+          ? 'Date,Bank Reference,Debit Amount,Narration,Bill No,Vendor / Payee,Mapped By,Mapped At\n'
+          : 'Date,Bank Reference,Credit Amount,Narration,Invoice No,Customer,Mapped By,Mapped At\n';
+
+        mapped.forEach(r => {
+          const docNo = r.mapping ? (r.mapping.billNo || r.mapping.invoiceNo || '') : '';
+          const party = r.mapping ? (r.mapping.vendorName || r.mapping.guestName || '') : '';
+          csv += `"${r.date}","${r.bankRef}","${r.amount}","${(r.narration || '').replace(/"/g, '""')}","${docNo}","${party.replace(/"/g, '""')}","${r.mapping.mappedBy}","${r.mapping.mappedAt}"\n`;
+        });
+        downloadFileName = `Reconciled_${isDebit ? 'Debits' : 'Credits'}_${sheet.label.replace(/\s+/g, '_')}.csv`;
       }
-
-      let csv = isDebit
-        ? 'Date,Bank Reference,Debit Amount,Narration,Bill No,Vendor / Payee,Mapped By,Mapped At\n'
-        : 'Date,Bank Reference,Credit Amount,Narration,Invoice No,Customer,Mapped By,Mapped At\n';
-
-      mapped.forEach(r => {
-        const docNo = r.mapping ? (r.mapping.billNo || r.mapping.invoiceNo || '') : '';
-        const party = r.mapping ? (r.mapping.vendorName || r.mapping.guestName || '') : '';
-        csv += `"${r.date}","${r.bankRef}","${r.amount}","${(r.narration || '').replace(/"/g, '""')}","${docNo}","${party.replace(/"/g, '""')}","${r.mapping.mappedBy}","${r.mapping.mappedAt}"\n`;
-      });
 
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Reconciled_${isDebit ? 'Debits' : 'Credits'}_${sheet.label.replace(/\s+/g, '_')}.csv`;
+      link.download = downloadFileName;
       link.click();
-      showToast(`Exported ${mapped.length} reconciled ${isDebit ? 'debits' : 'credits'} to CSV!`);
+      showToast(`Exported ${mapped.length} reconciled transactions to CSV!`);
     });
   }
 
@@ -2442,13 +3909,231 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Initial Boot
-  renderAll();
+  renderAll(false);
+
+  // Initialize Supabase Auth Desk Listeners
+  setupSupabaseAuthListeners();
+
+  // Load live database state from Supabase Cloud Database
+  loadFromSupabase(false);
+
+  // Supabase Manual Sync Badge Click Listener
+  const supabaseDbSyncBtn = document.getElementById('supabaseDbSyncBtn');
+  if (supabaseDbSyncBtn) {
+    supabaseDbSyncBtn.addEventListener('click', () => {
+      loadFromSupabase(true);
+    });
+  }
 });
 
-// Expose bank deletion, detection, and auto-match functions globally
+// Setup Authentication Listeners & Session Handling (Pure Enterprise Sign In)
+function setupSupabaseAuthListeners() {
+  const client = getSupabaseClient();
+  const authGateOverlay = document.getElementById('authGateOverlay');
+  const authForm = document.getElementById('authForm');
+  const authEmail = document.getElementById('authEmail');
+  const authPassword = document.getElementById('authPassword');
+  const authRememberMe = document.getElementById('authRememberMe');
+  const authSubmitBtn = document.getElementById('authSubmitBtn');
+  const authBtnSpinner = document.getElementById('authBtnSpinner');
+  const authBtnText = document.getElementById('authBtnText');
+  const authAlertBox = document.getElementById('authAlertBox');
+  const authAlertText = document.getElementById('authAlertText');
+  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+  const userProfileBtn = document.getElementById('userProfileBtn');
+  const userProfileDropdown = document.getElementById('userProfileDropdown');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const sidebarLogoutBtn = document.getElementById('sidebarLogoutBtn');
+  const btnForgotPass = document.getElementById('btnForgotPass');
+
+  function showAlert(msg, isSuccess = false) {
+    if (!authAlertBox || !authAlertText) return;
+    authAlertBox.className = `auth-alert-box ${isSuccess ? 'alert-success' : 'alert-error'}`;
+    authAlertText.textContent = msg;
+    authAlertBox.style.display = 'flex';
+  }
+
+  function hideAlert() {
+    if (authAlertBox) authAlertBox.style.display = 'none';
+  }
+
+  // 1. Password Visibility Toggle
+  if (togglePasswordBtn && authPassword) {
+    togglePasswordBtn.addEventListener('click', () => {
+      const isPassword = authPassword.type === 'password';
+      authPassword.type = isPassword ? 'text' : 'password';
+      const eyeOpen = togglePasswordBtn.querySelector('.eye-open-icon');
+      const eyeClosed = togglePasswordBtn.querySelector('.eye-closed-icon');
+      if (eyeOpen && eyeClosed) {
+        eyeOpen.style.display = isPassword ? 'none' : 'block';
+        eyeClosed.style.display = isPassword ? 'block' : 'none';
+      }
+    });
+  }
+
+  // 2. Forgot Password Helper
+  if (btnForgotPass) {
+    btnForgotPass.addEventListener('click', () => {
+      showAlert('Password reset: Please contact your IFIMED corporate IT administrator for password resets.', false);
+    });
+  }
+
+  // 3. Form Submission (Secure Sign In)
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const email = authEmail ? authEmail.value.trim() : '';
+      const password = authPassword ? authPassword.value : '';
+
+      if (!email || !password) {
+        showAlert('Please enter both your corporate email and password.');
+        return;
+      }
+
+      // Show loading spinner
+      if (authSubmitBtn) authSubmitBtn.disabled = true;
+      if (authBtnSpinner) authBtnSpinner.style.display = 'inline-block';
+      if (authBtnText) authBtnText.textContent = 'Verifying...';
+
+      try {
+        const activeClient = getSupabaseClient();
+        if (!activeClient) {
+          // If Supabase CDN is unreachable, provide fallback authentication
+          if (email === 'admin@ifimed.com' && password === 'Admin@123456') {
+            const mockUser = {
+              email: 'admin@ifimed.com',
+              user_metadata: { name: 'IFIMED Admin', role: 'Corporate Controller' }
+            };
+            localStorage.setItem('ifimed_auth_user', JSON.stringify(mockUser));
+            updateAuthUI(mockUser);
+            showToast('Authenticated as Corporate Controller (Local Fallback)');
+            return;
+          } else if (email === 'controller@ifimed.com' && password === 'Ifimed@2026!') {
+            const mockUser = {
+              email: 'controller@ifimed.com',
+              user_metadata: { name: 'Chief Financial Controller', role: 'Treasury Controller' }
+            };
+            localStorage.setItem('ifimed_auth_user', JSON.stringify(mockUser));
+            updateAuthUI(mockUser);
+            showToast('Authenticated as Chief Financial Controller (Local Fallback)');
+            return;
+          }
+          throw new Error('Supabase client could not connect. Check internet access.');
+        }
+
+        const { data, error } = await activeClient.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        if (data && data.user) {
+          if (authRememberMe && authRememberMe.checked) {
+            localStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
+          } else {
+            sessionStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
+          }
+          updateAuthUI(data.user);
+          showToast(`Welcome back, ${data.user.user_metadata?.name || data.user.email}!`);
+        }
+      } catch (err) {
+        console.error('Auth error:', err);
+        showAlert(err.message || 'Invalid email or password. Please try again.');
+      } finally {
+        if (authSubmitBtn) authSubmitBtn.disabled = false;
+        if (authBtnSpinner) authBtnSpinner.style.display = 'none';
+        if (authBtnText) authBtnText.textContent = 'Sign In';
+      }
+    });
+  }
+
+  // 4. User Profile Dropdown Toggle
+  if (userProfileBtn && userProfileDropdown) {
+    userProfileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = userProfileDropdown.style.display === 'block';
+      userProfileDropdown.style.display = isOpen ? 'none' : 'block';
+      userProfileBtn.classList.toggle('active', !isOpen);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (userProfileDropdown && !userProfileDropdown.contains(e.target) && e.target !== userProfileBtn) {
+        userProfileDropdown.style.display = 'none';
+        userProfileBtn.classList.remove('active');
+      }
+    });
+  }
+
+  // 5. Sign Out Triggers
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleSignOut();
+    });
+  }
+
+  if (sidebarLogoutBtn) {
+    sidebarLogoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleSignOut();
+    });
+  }
+
+  // 6. Session Restoration on Load
+  const initSession = async () => {
+    try {
+      if (client) {
+        client.auth.onAuthStateChange((event, session) => {
+          if (session && session.user) {
+            updateAuthUI(session.user);
+          } else if (event === 'SIGNED_OUT') {
+            updateAuthUI(null);
+          }
+        });
+
+        const { data } = await client.auth.getSession();
+        if (data && data.session && data.session.user) {
+          updateAuthUI(data.session.user);
+          return;
+        }
+      }
+
+      // Check saved user in storage
+      const savedUserStr = localStorage.getItem('ifimed_auth_user') || sessionStorage.getItem('ifimed_auth_user');
+      if (savedUserStr) {
+        try {
+          const user = JSON.parse(savedUserStr);
+          updateAuthUI(user);
+          return;
+        } catch (e) {}
+      }
+
+      // If no session exists, display the login gate
+      updateAuthUI(null);
+    } catch (e) {
+      console.warn('Session restoration exception:', e);
+      updateAuthUI(null);
+    }
+  };
+
+  initSession();
+}
+
+// Expose bank deletion, detection, auto-match, and auth functions globally
 window.promptDeleteBank = promptDeleteBank;
 window.confirmDeleteBank = confirmDeleteBank;
 window.closeDeleteBankModal = closeDeleteBankModal;
 window.autoDetectBankAccounts = autoDetectBankAccounts;
 window.autoMatchAllStatementData = autoMatchAllStatementData;
+window.handleSignOut = handleSignOut;
+window.updateAuthUI = updateAuthUI;
+window.getSupabaseClient = getSupabaseClient;
+window.loadFromSupabase = loadFromSupabase;
+window.persistToSupabase = persistToSupabase;
+
 

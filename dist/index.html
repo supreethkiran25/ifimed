@@ -7,44 +7,52 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.5">
+  <link rel="stylesheet" href="styles.css?v=3.5">
+  <!-- Supabase JS Client v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- SheetJS for universal Excel & CSV parsing -->
+  <script src="xlsx.full.min.js"></script>
   <script>
     (function() {
       try {
-        const saved = localStorage.getItem('ifimed_theme');
-        const pref = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', pref);
+        localStorage.removeItem('ifimed_theme');
+        document.documentElement.removeAttribute('data-theme');
       } catch (e) {}
     })();
   </script>
 </head>
 <body>
 
-  <!-- Full-Width Top Corporate Header / Navbar (Matching Reference Screenshot) -->
+  <!-- Full-Width Top Corporate Header / Navbar -->
   <header class="top-navbar">
     <div class="top-navbar-left">
-      <!-- Mobile Sidebar Toggle Hamburger Button -->
-      <button type="button" class="mobile-sidebar-toggle" id="mobileSidebarToggle" aria-label="Toggle navigation menu">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-
       <!-- Corporate Brand Logo -->
       <div class="header-logo-wrap" title="IFIMED Pharmaceuticals Pvt. Ltd.">
         <img src="ifimed-logo.jpg" alt="IFIMED Pharmaceuticals" class="header-logo">
       </div>
 
-      <div class="header-v-divider"></div>
-
-      <!-- Breadcrumbs -->
-      <div class="top-breadcrumbs" id="topBreadcrumbs">
-        <span class="crumb-root">Accounts ERP</span>
-        <span class="crumb-separator">/</span>
-        <span class="crumb-active" id="currentCrumb">Bank statements</span>
-      </div>
+      <!-- Top Navigation Tabs (Horizontal Top Bar) -->
+      <nav class="top-nav-tabs" role="tablist" aria-label="Main Navigation">
+        <button type="button" class="top-nav-tab" data-view="dashboard" id="navDashboard">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+        <button type="button" class="top-nav-tab active" data-view="bank-statements" id="navBankStatements">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <span>Bank statements</span>
+        </button>
+      </nav>
     </div>
 
     <div class="top-navbar-right">
@@ -58,81 +66,63 @@
         <kbd class="search-kbd-badge">⌘ K</kbd>
       </div>
 
-      <!-- Dark / Light Mode Toggle Button -->
-      <button type="button" class="theme-toggle-btn" id="themeToggleBtn" aria-label="Toggle theme" title="Toggle dark / light mode (Ctrl+D)">
-        <span class="theme-icon-moon">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-        </span>
-        <span class="theme-icon-sun">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-        </span>
-      </button>
+      <!-- Supabase Cloud DB status + explicit sync action -->
+      <div class="supabase-db-status" role="status" aria-live="polite" aria-atomic="true" title="Connected to Supabase Cloud Database (bdvktgrehxwjovhycvsj)">
+        <span class="supabase-db-dot" id="supabaseDbDot" aria-hidden="true"></span>
+        <span class="supabase-db-text" id="supabaseDbSyncText">Supabase Synced · 12:34 am</span>
+        <button type="button" class="btn btn-ghost" id="supabaseDbSyncBtn" title="Sync workspace now" aria-label="Sync workspace now">Sync</button>
+      </div>
 
-      <!-- Online Status Indicator Dot -->
-      <span class="online-indicator-dot" title="Treasury desk active"></span>
+      <!-- User Profile Avatar with Interactive Dropdown -->
+      <div class="user-profile-menu-container" id="userProfileContainer">
+        <button type="button" class="user-profile-badge" id="userProfileBtn" aria-haspopup="true" aria-expanded="false" title="Click to view user session & account options">
+          <div class="user-avatar-circle" id="userAvatarInitials">IA</div>
+          <div class="user-details-col">
+            <span class="user-display-name" id="userDisplayName">IFIMED Accounts Controller</span>
+            <span class="user-org-name" id="userRoleName">Corporate Controller</span>
+          </div>
+          <svg class="profile-chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
 
-      <!-- User Profile Avatar -->
-      <div class="user-profile-badge" title="Accounts Team · Corporate Controller">
-        <div class="user-avatar-circle">AK</div>
-        <div class="user-details-col">
-          <span class="user-display-name">Accounts Team</span>
-          <span class="user-org-name">IFIMED</span>
+        <!-- User Profile Dropdown Menu -->
+        <div class="user-profile-dropdown" id="userProfileDropdown" style="display: none;">
+          <div class="user-dropdown-header">
+            <div class="user-dropdown-avatar" id="dropdownAvatar">AK</div>
+            <div class="user-dropdown-info">
+              <div class="user-dropdown-name" id="dropdownName">Accounts Team</div>
+              <div class="user-dropdown-email" id="dropdownEmail">admin@ifimed.com</div>
+              <span class="user-dropdown-badge" id="dropdownBadge">Corporate Admin</span>
+            </div>
+          </div>
+          <div class="user-dropdown-divider"></div>
+          <div class="user-dropdown-meta">
+            <div class="meta-row">
+              <span class="meta-label">Supabase Auth:</span>
+              <span class="meta-val meta-val-green"><span class="meta-status-dot"></span> Active Session</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Project Ref:</span>
+              <span class="meta-val font-mono">bdvktgrehxw...</span>
+            </div>
+          </div>
+          <div class="user-dropdown-divider"></div>
+          <button type="button" class="dropdown-item dropdown-logout-btn" id="logoutBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>Sign Out from Desk</span>
+          </button>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Main Application Workspace Shell (Sidebar + Content Below Top Navbar) -->
+  <!-- Main Application Workspace Shell (Full Width Corporate Desk) -->
   <div class="app-shell">
-    
-    <!-- Left Navigation Sidebar -->
-    <aside class="app-sidebar">
-      <!-- Navigation Links -->
-      <nav class="sidebar-nav">
-        <button type="button" class="sidebar-nav-item" data-view="dashboard" id="navDashboard">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-          </svg>
-          <span>Dashboard</span>
-        </button>
-
-        <button type="button" class="sidebar-nav-item active" data-view="bank-statements" id="navBankStatements">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
-          <span>Bank statements</span>
-        </button>
-
-      </nav>
-
-      <!-- Sidebar Footer -->
-      <div class="sidebar-footer">
-        <div class="sidebar-version-brand">IFIMED ERP</div>
-        <div class="sidebar-version-num">v1.0.0</div>
-      </div>
-    </aside>
-    <!-- Mobile Sidebar Backdrop Overlay -->
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-
     <!-- Main Content Area -->
     <main class="main-content-scroll">
       
@@ -141,57 +131,61 @@
       <!-- ================================================================= -->
       <section class="view-panel active" id="viewBankStatements">
         
-        <!-- Page Header & Title Row (Matching Reference Screenshot) -->
+        <!-- Modern Executive Desk Header Row -->
         <div class="page-title-row">
           <div class="title-col">
-            <div class="page-breadcrumb-sub">Dashboard / Bank statements</div>
-            <h1 class="page-main-heading">Bank statements</h1>
-            <p class="page-main-subheading" id="pageBankSubheading">
-              Turn incoming ICICI Bank credits into explicit invoice links.
-            </p>
-          </div>
+            <nav class="page-breadcrumb-sub" aria-label="Breadcrumb">
+              <ol class="breadcrumb-list">
+                <li><a href="#viewDashboard" class="breadcrumb-link" id="breadcrumbDashboard">Dashboard</a></li>
+                <li class="breadcrumb-current" aria-current="page">Bank statements</li>
+              </ol>
+            </nav>
+            <div class="page-heading-cluster">
+              <h1 class="page-main-heading">Bank statements</h1>
+              <div class="bank-desk-pill-wrap">
+                <span class="bank-pill-label" id="bankSelectorLabel">Corporate Bank</span>
+                <div class="bank-selector-dropdown-wrap">
+                  <button type="button" class="btn btn-outline bank-selector-pill" id="bankSelectorBtn" title="Switch Corporate Bank Account" aria-haspopup="true" aria-expanded="false" aria-labelledby="bankSelectorLabel activeBankName">
+                    <span class="bank-dot" aria-hidden="true"></span>
+                    <span class="bank-active-name" id="activeBankName">Axis Bank Current A/c ••••7419</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
 
-          <!-- Right: Bank Account Switcher Pill (Styled like 'Role Normal user' in reference) -->
-          <div class="bank-desk-pill-wrap">
-            <span class="bank-pill-label">Corporate Bank</span>
-            <div class="bank-selector-dropdown-wrap">
-              <button type="button" class="bank-selector-pill" id="bankSelectorBtn" title="Switch Corporate Bank Account" aria-haspopup="true" aria-expanded="false">
-                <span class="bank-dot"></span>
-                <span class="bank-active-name" id="activeBankName">ICICI Bank Current A/c ••3021</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </button>
-
-              <!-- Bank Accounts Dropdown Menu -->
-              <div class="bank-dropdown-menu" id="bankDropdownMenu" style="display: none;">
-                <div class="dropdown-header">Select Corporate Bank Account</div>
-                <div class="bank-options-list" id="bankOptionsList">
-                  <!-- Populated dynamically by JS -->
+                  <div class="bank-dropdown-menu" id="bankDropdownMenu" style="display: none;" role="menu" aria-label="Corporate bank accounts">
+                    <div class="dropdown-header">Select Corporate Bank Account</div>
+                    <div class="bank-options-list" id="bankOptionsList">
+                      <!-- Populated dynamically by JS -->
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <button type="button" class="dropdown-action-btn" id="autoDetectBanksBtn">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                      </svg>
+                      <span>Auto-Detect Accounts from Statements</span>
+                    </button>
+                    <button type="button" class="dropdown-action-btn" id="openAddBankModalBtn">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      <span>+ Add New Bank Account</span>
+                    </button>
+                  </div>
                 </div>
-                <div class="dropdown-divider"></div>
-                <button type="button" class="dropdown-action-btn" id="autoDetectBanksBtn" style="color: var(--ifimed-primary); font-weight: 600;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                  </svg>
-                  <span>Auto-Detect Accounts from Statements</span>
-                </button>
-                <button type="button" class="dropdown-action-btn" id="openAddBankModalBtn">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  <span>+ Add New Bank Account</span>
-                </button>
               </div>
             </div>
+            <p class="page-main-subheading" id="pageBankSubheading">
+              Turn incoming Axis Bank credits into explicit invoice links.
+            </p>
           </div>
         </div>
 
-        <!-- 4 KPI Summary Cards in a Grid -->
+        <!-- 4 KPI Summary Cards in a Modern Fintech Grid -->
         <div class="kpi-grid">
-          <!-- Card 1: Total Credits / Debits -->
-          <div class="kpi-card">
+          <!-- Card 1: Total Credits (Inflow) -->
+          <div class="kpi-card kpi-card-inflow">
             <div class="kpi-card-header">
               <span class="kpi-header-label" id="kpiTotalHeader">Total Credits (This Month)</span>
               <div class="kpi-icon-circle icon-circle-blue" id="kpiTotalIcon">
@@ -202,13 +196,13 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiTotalAmount">₹ 0</div>
-              <div class="kpi-card-subtext"><span id="kpiTotalCount">0</span> bank transactions</div>
+              <div class="kpi-card-amount font-mono" id="kpiTotalAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span class="kpi-badge-count" id="kpiTotalCount">0</span> bank transactions</div>
             </div>
           </div>
 
-          <!-- Card 2: Mapped Credits / Debits -->
-          <div class="kpi-card">
+          <!-- Card 2: Mapped Credits / Debits (Outflow) -->
+          <div class="kpi-card kpi-card-mapped">
             <div class="kpi-card-header">
               <span class="kpi-header-label" id="kpiMappedHeader">Mapped Credits</span>
               <div class="kpi-icon-circle icon-circle-green">
@@ -218,13 +212,13 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiMappedAmount">₹ 0</div>
-              <div class="kpi-card-subtext"><span id="kpiMappedCount">0</span> transactions linked</div>
+              <div class="kpi-card-amount font-mono" id="kpiMappedAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span class="kpi-badge-count" id="kpiMappedCount">0</span> transactions linked</div>
             </div>
           </div>
 
-          <!-- Card 3: Unmapped Credits / Debits -->
-          <div class="kpi-card">
+          <!-- Card 3: Unmapped Credits / Net Cash Flow -->
+          <div class="kpi-card kpi-card-unmapped">
             <div class="kpi-card-header">
               <span class="kpi-header-label" id="kpiUnmappedHeader">Unmapped Credits</span>
               <div class="kpi-icon-circle icon-circle-amber">
@@ -236,8 +230,8 @@
               </div>
             </div>
             <div class="kpi-card-body">
-              <div class="kpi-card-amount" id="kpiUnmappedAmount">₹ 0</div>
-              <div class="kpi-card-subtext"><span id="kpiUnmappedCount">0</span> transactions need review</div>
+              <div class="kpi-card-amount font-mono" id="kpiUnmappedAmount">₹ 0</div>
+              <div class="kpi-card-subtext"><span class="kpi-badge-count" id="kpiUnmappedCount">0</span> transactions need review</div>
             </div>
           </div>
 
@@ -255,53 +249,49 @@
           </div>
         </div>
 
-        <!-- Bank Statement Files Section Card (Matching Screenshot 1) -->
+        <!-- Space-Efficient Active Statement Bar & Quick Upload Strip -->
         <div class="content-card statement-files-card">
           <div class="card-header-bar">
             <div class="card-header-titles">
-              <h2 class="card-title">Bank statement files</h2>
-              <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from ICICI Bank</p>
+              <div class="title-with-badge">
+                <div class="icon-square-blue">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                </div>
+                <h2 class="card-title">Bank statement files</h2>
+              </div>
+              <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from Axis Bank</p>
             </div>
-            <div class="card-header-actions" style="display: flex; gap: 8px;">
+            <div class="statement-header-actions">
               <button type="button" class="btn btn-outline btn-sm" id="detectStatementsBtn" title="Detect accounts & statements from local statement files">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
                 <span>Auto-Detect Accounts</span>
               </button>
-              <button type="button" class="btn btn-primary btn-sm" id="uploadCsvBtn">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button type="button" class="btn btn-primary btn-sm" id="uploadCsvBtn" title="Upload Bank Statement">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="17 8 12 3 7 8"/>
                   <line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                <span>Upload CSV</span>
+                <span>Upload Statement (CSV / Excel)</span>
               </button>
-              <input type="file" id="bankCsvInput" accept=".csv,text/csv" class="hidden-input">
+              <input type="file" id="bankCsvInput" accept=".csv, .xlsx, .xls, .tsv, .txt, *" class="hidden-input">
             </div>
           </div>
 
           <div class="statement-files-layout">
-            <!-- Left Dropzone Area -->
-            <div class="files-dropzone-box" id="dropZone" title="Click or drop a bank statement CSV here">
-              <div class="dropzone-inner-content">
-                <div class="dropzone-icon-circle">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                  </svg>
-                </div>
-                <div class="dropzone-text-group">
-                  <strong class="dropzone-cta-title">Upload CSV</strong>
-                  <span class="dropzone-bank-hint" id="dropZoneBankName">ICICI Bank CSV only</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Right Monthly Statements Table -->
-            <div class="files-table-wrapper">
+            <div class="files-table-wrapper" id="dropZone" title="Drop a bank statement file on this table to upload">
               <table class="files-table" id="statementFilesTable">
+                <colgroup>
+                  <col class="col-file">
+                  <col class="col-credits">
+                  <col class="col-debits">
+                  <col class="col-uploaded">
+                </colgroup>
                 <thead>
                   <tr>
                     <th scope="col">MONTH · FILE NAME</th>
@@ -318,12 +308,24 @@
           </div>
         </div>
 
-        <!-- Mapping Desk Section Card (Supports both Credit Mapping and Debit Mapping) -->
+        <!-- Mapping Desk Section Card (The Centerpiece of Reconciliation) -->
         <div class="content-card credit-mapping-card" id="mappingSection">
           
-          <!-- Desk Mode Segmented Switcher (Credits vs Debits) -->
+          <!-- Desk Mode Segmented Switcher Tabs (top bar inside card) -->
           <div class="mapping-desk-tabs-bar">
             <div class="mapping-desk-tabs" role="tablist" aria-label="Reconciliation Desk Mode">
+              <button type="button" class="desk-tab-btn" id="tabAllMode" role="tab" aria-selected="false" data-mode="all" onclick="switchMappingMode('all')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+                <span>All (Credits &amp; Debits)</span>
+                <span class="desk-tab-badge" id="tabAllBadge">0</span>
+              </button>
               <button type="button" class="desk-tab-btn active" id="tabCreditMode" role="tab" aria-selected="true" data-mode="credit" onclick="switchMappingMode('credit')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <line x1="17" y1="7" x2="7" y2="17"></line>
@@ -343,7 +345,7 @@
             </div>
           </div>
 
-          <div class="card-header-bar">
+          <div class="card-header-bar mapping-desk-header">
             <div class="card-header-titles">
               <div class="title-with-badge">
                 <h2 class="card-title" id="mappingCardTitle">Credit mapping</h2>
@@ -352,8 +354,7 @@
               <p class="card-subtitle" id="mappingCardSubtitle">Choose an invoice, review the bank evidence, then confirm the link.</p>
             </div>
 
-            <div class="mapping-desk-toolbar" role="toolbar" aria-label="Reconciliation Table Tools">
-              <!-- Query Controls: Search & Filter -->
+            <div class="mapping-desk-toolbar" role="toolbar" aria-label="Reconciliation table tools">
               <div class="toolbar-group toolbar-group-query">
                 <div class="search-input-wrapper">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -363,34 +364,30 @@
                   <input type="text" id="tableSearchInput" placeholder="Search narration or reference" class="table-search-box" aria-label="Search narration or reference">
                 </div>
 
-                <!-- Filter Dropdown Button -->
                 <div class="filter-dropdown-container">
-                  <button type="button" class="btn btn-outline btn-sm" id="filterDropdownBtn" aria-haspopup="true" aria-expanded="false" title="Filter transactions by status">
+                  <button type="button" class="btn btn-outline" id="filterDropdownBtn" aria-haspopup="true" aria-expanded="false" aria-controls="filterMenuPopover" title="Filter transactions by status">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
                     </svg>
                     <span id="activeFilterLabel">Filter</span>
                   </button>
 
-                  <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;">
-                    <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll">
+                  <div class="filter-menu-popover" id="filterMenuPopover" style="display: none;" role="menu">
+                    <button type="button" class="filter-menu-item active" data-filter="all" id="filterAll" role="menuitem">
                       All (<span id="countAll">0</span>)
                     </button>
-                    <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped">
+                    <button type="button" class="filter-menu-item" data-filter="unmapped" id="filterUnmapped" role="menuitem">
                       Pending (<span id="countUnmapped">0</span>)
                     </button>
-                    <button type="button" class="filter-menu-item" data-filter="mapped" id="filterMapped">
+                    <button type="button" class="filter-menu-item" data-filter="mapped" id="filterMapped" role="menuitem">
                       Reconciled (<span id="countMapped">0</span>)
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div class="toolbar-divider" role="separator" aria-orientation="vertical"></div>
-
-              <!-- Primary Bulk Workflow Action -->
               <div class="toolbar-group toolbar-group-primary">
-                <button type="button" class="btn btn-primary btn-sm" id="autoMatchAllBtn" title="Auto-match all open transactions with statement invoices/bills" aria-label="Auto-match all open transactions">
+                <button type="button" class="btn btn-outline" id="autoMatchAllBtn" title="Auto-match all open transactions with statement invoices or bills" aria-label="Auto-match all open transactions">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                   </svg>
@@ -398,75 +395,81 @@
                 </button>
               </div>
 
-              <div class="toolbar-divider" role="separator" aria-orientation="vertical"></div>
-
-              <!-- Secondary Actions: Export & Catalog Management -->
-              <div class="toolbar-group toolbar-group-secondary">
-                <button type="button" class="btn btn-outline btn-sm" id="exportCurrentMonthBtn" title="Export reconciled CSV" aria-label="Export reconciled transactions to CSV">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  <span id="exportCsvBtnText">Export CSV</span>
-                </button>
-
-                <!-- Credit Mode Actions -->
-                <div class="mode-actions-group" id="creditActionsGroup">
-                  <button type="button" class="btn btn-outline btn-sm" id="openAddInvoiceModalBtn" title="Manually enter a customer invoice">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
+              <div class="toolbar-group toolbar-group-more">
+                <div class="filter-dropdown-container">
+                  <button type="button" class="btn btn-outline" id="mappingMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="mappingMoreMenu" title="Export and catalog actions">
+                    <span>More</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6"/>
                     </svg>
-                    <span>Add Invoice</span>
                   </button>
 
-                  <button type="button" class="btn btn-outline btn-sm" id="openUploadInvoiceCsvBtn" title="Bulk upload customer invoices from CSV">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    <span>Upload Invoices</span>
-                  </button>
-                  <input type="file" id="invoiceCsvInput" accept=".csv,text/csv" class="hidden-input">
+                  <div class="filter-menu-popover mapping-more-menu" id="mappingMoreMenu" style="display: none;" role="menu" aria-label="Export and catalog actions">
+                    <button type="button" class="filter-menu-item" id="exportCurrentMonthBtn" role="menuitem" title="Export reconciled CSV" aria-label="Export reconciled transactions to CSV">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      <span id="exportCsvBtnText">Export CSV</span>
+                    </button>
 
-                  <button type="button" class="btn btn-outline btn-sm" id="viewInvoicesBtn" title="View Invoices Catalog">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    <span id="totalInvoicesCountBadge">207 Invoices</span>
-                  </button>
-                </div>
+                    <div class="mode-actions-group" id="creditActionsGroup" role="group" aria-label="Invoice catalog">
+                      <button type="button" class="filter-menu-item" id="openAddInvoiceModalBtn" role="menuitem" title="Manually enter a customer invoice">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>Add Invoice</span>
+                      </button>
 
-                <!-- Debit Mode Actions -->
-                <div class="mode-actions-group" id="debitActionsGroup" style="display: none;">
-                  <button type="button" class="btn btn-outline btn-sm" id="openAddBillModalBtn" title="Manually enter a vendor bill / expense">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    <span>Add Vendor Bill</span>
-                  </button>
+                      <button type="button" class="filter-menu-item" id="openUploadInvoiceCsvBtn" role="menuitem" title="Bulk upload customer invoices from CSV">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="17 8 12 3 7 8"/>
+                          <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <span>Upload Invoices</span>
+                      </button>
+                      <input type="file" id="invoiceCsvInput" accept=".csv, .xlsx, .xls, .tsv, .txt, *" class="hidden-input">
 
-                  <button type="button" class="btn btn-outline btn-sm" id="openUploadBillCsvBtn" title="Bulk upload vendor bills from CSV">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    <span>Upload Bills</span>
-                  </button>
-                  <input type="file" id="billCsvInput" accept=".csv,text/csv" class="hidden-input">
+                      <button type="button" class="filter-menu-item" id="viewInvoicesBtn" role="menuitem" title="View invoices catalog">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span id="totalInvoicesCountBadge">0 Invoices</span>
+                      </button>
+                    </div>
 
-                  <button type="button" class="btn btn-outline btn-sm" id="viewBillsBtn" title="View Vendor Bills Catalog">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    <span id="totalBillsCountBadge">9 Vendor Bills</span>
-                  </button>
+                    <div class="mode-actions-group" id="debitActionsGroup" style="display: none;" role="group" aria-label="Vendor bill catalog">
+                      <button type="button" class="filter-menu-item" id="openAddBillModalBtn" role="menuitem" title="Manually enter a vendor bill or expense">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>Add Vendor Bill</span>
+                      </button>
+
+                      <button type="button" class="filter-menu-item" id="openUploadBillCsvBtn" role="menuitem" title="Bulk upload vendor bills from CSV">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="17 8 12 3 7 8"/>
+                          <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <span>Upload Bills</span>
+                      </button>
+                      <input type="file" id="billCsvInput" accept=".csv, .xlsx, .xls, .tsv, .txt, *" class="hidden-input">
+
+                      <button type="button" class="filter-menu-item" id="viewBillsBtn" role="menuitem" title="View vendor bills catalog">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span id="totalBillsCountBadge">0 Vendor Bills</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -505,13 +508,13 @@
           <!-- Table Footer Totals Bar -->
           <div class="table-footer-bar">
             <div class="footer-left-info">
-              <span>Showing <strong id="visibleRowCount">207</strong> transactions for <strong id="currentMonthLabel">July 2026</strong></span>
+              <span>Showing <strong id="visibleRowCount">0</strong> transactions for <strong id="currentMonthLabel">No Statement</strong></span>
               <span class="dot-sep">•</span>
               <span class="footer-bank-detail" id="footerBankDetails">ICICI Bank Current A/c ••3021</span>
             </div>
             <div class="footer-right-info">
               <span class="subtotal-label" id="footerSubtotalLabel">Subtotal Inflow:</span>
-              <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 86,62,155</span>
+              <span class="subtotal-val font-mono" id="totalCreditAmount">₹ 0</span>
             </div>
           </div>
         </div>
@@ -524,7 +527,12 @@
       <section class="view-panel" id="viewDashboard" style="display: none;">
         <div class="page-title-row">
           <div class="title-col">
-            <div class="page-breadcrumb-sub">Corporate Treasury / Overview</div>
+            <nav class="page-breadcrumb-sub" aria-label="Breadcrumb">
+              <ol class="breadcrumb-list">
+                <li>Corporate Treasury</li>
+                <li class="breadcrumb-current" aria-current="page">Overview</li>
+              </ol>
+            </nav>
             <h1 class="page-main-heading">Financial Dashboard</h1>
             <p class="page-main-subheading">
               Multi-bank inflow monitoring, reconciliation throughput, and working capital telemetry.
@@ -945,6 +953,104 @@
     </div>
   </div>
 
+  <!-- Fullscreen Enterprise Supabase Authentication Gate -->
+  <!-- Fullscreen Enterprise Supabase Authentication Gate (Secure & Non-Dismissible) -->
+  <div class="auth-gate-overlay" id="authGateOverlay">
+    <div class="auth-gate-card">
+      
+      <!-- Brand Header -->
+      <div class="auth-card-brand-center">
+        <div class="auth-brand-pill">
+          <img src="ifimed-logo.jpg" alt="IFIMED Pharmaceuticals" class="auth-brand-logo">
+        </div>
+      </div>
+
+      <div class="auth-card-titles-center">
+        <h2 class="auth-heading">Sign In</h2>
+        <p class="auth-subheading">IFIMED Treasury & Bank Reconciliation Workspace</p>
+      </div>
+
+      <!-- Alert Feedback Banner -->
+      <div class="auth-alert-box" id="authAlertBox" style="display: none;" role="alert">
+        <div class="auth-alert-icon" id="authAlertIcon"></div>
+        <div class="auth-alert-text" id="authAlertText"></div>
+      </div>
+
+      <!-- Auth Form -->
+      <form class="auth-form" id="authForm" novalidate autocomplete="on">
+
+        <!-- Email Field -->
+        <div class="form-group">
+          <label for="authEmail" class="form-label">Corporate Email</label>
+          <div class="input-with-icon">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            <input type="email" id="authEmail" class="form-input" placeholder="Enter your email" required autocomplete="email">
+          </div>
+        </div>
+
+        <!-- Password Field -->
+        <div class="form-group">
+          <div class="label-with-meta">
+            <label for="authPassword" class="form-label">Password</label>
+            <button type="button" class="btn-text-forgot" id="btnForgotPass" tabindex="-1">Forgot password?</button>
+          </div>
+          <div class="input-with-icon input-with-action">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <input type="password" id="authPassword" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+            <button type="button" class="password-toggle-btn" id="togglePasswordBtn" aria-label="Toggle password visibility" title="Show or hide password">
+              <svg class="eye-open-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg class="eye-closed-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Remember Me Checkbox -->
+        <div class="form-row-remember">
+          <label class="checkbox-container">
+            <input type="checkbox" id="authRememberMe" checked>
+            <span class="custom-checkbox"></span>
+            <span class="checkbox-label">Keep me signed in</span>
+          </label>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" class="auth-submit-btn" id="authSubmitBtn">
+          <span class="btn-spinner" id="authBtnSpinner" style="display: none;"></span>
+          <span class="btn-text" id="authBtnText">Sign In</span>
+          <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+
+      <!-- Footer Security Guarantee -->
+      <div class="auth-card-footer">
+        <div class="security-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Encrypted Corporate Session</span>
+        </div>
+        <div class="auth-footer-brand">IFIMED Pharmaceuticals Pvt. Ltd. · Accounts ERP</div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Toast Feedback Notification -->
   <div class="toast-notification" id="toastNotification" role="alert" aria-live="polite">
     <div class="toast-icon" id="toastIcon"></div>
@@ -964,8 +1070,8 @@
   <span id="kpiProgressSubtext" style="display: none;"></span>
 
   <!-- Real Accounting & Bank Statement Dataset -->
-  <script src="data_ifimed.js?v=2.5"></script>
+  <script src="data_ifimed.js?v=3.5"></script>
   <!-- Application Logic -->
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=3.5"></script>
 </body>
 </html>
