@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.5">
+  <link rel="stylesheet" href="styles.css?v=3.6">
   <!-- Supabase JS Client v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- SheetJS for universal Excel & CSV parsing -->
@@ -70,7 +70,13 @@
       <div class="supabase-db-status" role="status" aria-live="polite" aria-atomic="true" title="Connected to Supabase Cloud Database (bdvktgrehxwjovhycvsj)">
         <span class="supabase-db-dot" id="supabaseDbDot" aria-hidden="true"></span>
         <span class="supabase-db-text" id="supabaseDbSyncText">Supabase Synced · 12:34 am</span>
-        <button type="button" class="btn btn-ghost" id="supabaseDbSyncBtn" title="Sync workspace now" aria-label="Sync workspace now">Sync</button>
+        <button type="button" class="btn btn-outline" id="supabaseDbSyncBtn" title="Sync workspace now" aria-label="Sync workspace now">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          <span>Sync</span>
+        </button>
       </div>
 
       <!-- User Profile Avatar with Interactive Dropdown -->
@@ -1070,8 +1076,8 @@
   <span id="kpiProgressSubtext" style="display: none;"></span>
 
   <!-- Real Accounting & Bank Statement Dataset -->
-  <script src="data_ifimed.js?v=3.5"></script>
+  <script src="data_ifimed.js?v=3.6"></script>
   <!-- Application Logic -->
-  <script src="app.js?v=3.5"></script>
+  <script src="app.js?v=3.6"></script>
 </body>
 </html>

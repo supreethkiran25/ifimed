@@ -3098,6 +3098,15 @@ function renderCreditTrendChart() {
 
   const maxTotal = Math.max(...data.map(d => d.total), 0);
 
+  if (maxTotal <= 0) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty-state';
+    empty.setAttribute('role', 'status');
+    empty.textContent = 'No data available for this period';
+    miniBarChart.appendChild(empty);
+    return;
+  }
+
   data.forEach(d => {
     const isCurrent = d.monthId === selectedMonthId;
     const heightPct = maxTotal > 0 ? Math.max(8, Math.round((d.total / maxTotal) * 95)) : 8;
