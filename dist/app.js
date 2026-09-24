@@ -365,13 +365,19 @@ function formatINR(amount) {
 
 function formatBankRef(bankRef, type) {
   if (!bankRef || bankRef === '—') return '—';
+  let ref = String(bankRef);
   if (type) {
     const prefixRegex = new RegExp(`^${type}[-_/\\s]+`, 'i');
-    if (prefixRegex.test(bankRef)) {
-      return bankRef.replace(prefixRegex, '');
+    if (prefixRegex.test(ref)) {
+      ref = ref.replace(prefixRegex, '');
     }
   }
-  return bankRef;
+  if (ref.length > 16) return `${ref.slice(0, 14)}…`;
+  return ref;
+}
+
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
 }
 
 function showToast(message, type = 'success') {
@@ -513,46 +519,131 @@ function switchBank(bankId) {
   showToast(`Switched account to ${bank.name} (${bank.accNo})`);
 }
 
-async function autoDetectBankAccounts(interactive = true) {
+function statementSourceHeader(csvText) {
+  return String(csvText || '').split(/\r?\n/).slice(0, 30).join('\n');
+}
+
+function workspaceHasStatementRows() {
+  return corporateBanks.some(b => (b.sheets || []).some(s =>
+    (s.records && s.records.length) || (s.debitRecords && s.debitRecords.length)
+  ));
+}
+
+async function fetchLocalStatementFiles() {
   try {
-    const res = await fetch('/api/detect-banks');
+    const res = await fetch('/api/local-statements');
     const ct = res.headers.get('content-type') || '';
     if (res.ok && ct.includes('application/json')) {
       const data = await res.json();
-      if (data.success && data.accounts && data.accounts.length > 0) {
-        corporateBanks = data.accounts;
-        if (data.invoices && Array.isArray(data.invoices)) {
-          appInvoices = data.invoices;
-        }
-        if (data.bills && Array.isArray(data.bills)) {
-          appVendorBills = data.bills;
-        }
-        selectedBankId = corporateBanks[0].id;
-        selectedMonthId = (corporateBanks[0].sheets && corporateBanks[0].sheets[0]) ? corporateBanks[0].sheets[0].monthId : '2026-07';
-        activeConfirmingRowId = null;
-        if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
-        renderAll();
-        if (interactive) {
-          showToast(`⚡ Successfully detected & loaded ${data.accounts.length} bank accounts from statements!`);
-        }
-        return true;
-      }
+      if (data.success && Array.isArray(data.files)) return data.files;
     }
   } catch (err) {}
+  return [];
+}
 
-  if (typeof REAL_CORPORATE_BANKS !== 'undefined' && Array.isArray(REAL_CORPORATE_BANKS)) {
-    corporateBanks = JSON.parse(JSON.stringify(REAL_CORPORATE_BANKS));
-    selectedBankId = corporateBanks[0].id;
-    selectedMonthId = (corporateBanks[0].sheets && corporateBanks[0].sheets[0]) ? corporateBanks[0].sheets[0].monthId : '2026-07';
+function registerBankFromSource(csvText, fileName, sheetNames) {
+  const detection = detectBankFromCsv(csvText || '', fileName || '', { sheetNames: sheetNames || [] });
+  if (detection && detection.bank && detection.extracted) {
+    applyExtractedBankDetails(detection.bank, detection.extracted);
+  }
+  return detection;
+}
+
+function rehomeUploadedSheetsBySource() {
+  let moved = 0;
+  let updated = 0;
+  corporateBanks.slice().forEach(bank => {
+    (bank.sheets || []).slice().forEach(sheet => {
+      const src = sheet.sourceHeader || '';
+      if (!src) return;
+      const extracted = extractStatementBankDetails(src, sheet.fileName || '', []);
+      if (!extracted.fullAccNo && !extracted.name && !extracted.ifsc) return;
+      const detection = registerBankFromSource(src, sheet.fileName || '');
+      const target = detection && detection.bank;
+      if (!target) return;
+      updated++;
+      if (target.id === bank.id) return;
+      bank.sheets = (bank.sheets || []).filter(s => s !== sheet);
+      if (!target.sheets) target.sheets = [];
+      if (!target.sheets.some(s => s.monthId === sheet.monthId && s.fileName === sheet.fileName)) {
+        target.sheets.unshift(sheet);
+      }
+      moved++;
+    });
+  });
+  return { moved, updated };
+}
+
+async function waitForInitialWorkspaceLoad(ms = 8000) {
+  const started = Date.now();
+  while (!isInitialSupabaseLoadDone && Date.now() - started < ms) {
+    await new Promise(resolve => setTimeout(resolve, 120));
+  }
+}
+
+async function autoDetectBankAccounts(interactive = true) {
+  try {
+    await waitForInitialWorkspaceLoad();
+    const localFiles = await fetchLocalStatementFiles();
+    const beforeIds = new Set(corporateBanks.map(b => b.id));
+    const detectedLabels = [];
+    let registered = 0;
+
+    localFiles.forEach(file => {
+      const detection = registerBankFromSource(file.csvText, file.fileName);
+      if (!detection || !detection.bank) return;
+      if (!beforeIds.has(detection.bank.id)) {
+        registered++;
+        beforeIds.add(detection.bank.id);
+      }
+      const acc = detection.extracted && detection.extracted.fullAccNo
+        ? detection.extracted.fullAccNo
+        : (detection.bank.fullAccNo || detection.bank.accNo);
+      detectedLabels.push(`${detection.bank.name} ${acc}`);
+    });
+
+    const { moved, updated } = rehomeUploadedSheetsBySource();
+
+    let imported = 0;
+    if (!workspaceHasStatementRows() && localFiles.length) {
+      for (const file of localFiles) {
+        await processBankStatementCsv(file.csvText, file.fileName, { autoApprove: true });
+        imported++;
+      }
+    }
+
+    const active = getActiveBank();
+    if (active) {
+      selectedBankId = active.id;
+      if (active.sheets && active.sheets[0]) selectedMonthId = active.sheets[0].monthId;
+    }
     activeConfirmingRowId = null;
     if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
-    renderAll();
+
+    renderAll(false);
+    await persistToSupabase();
+
     if (interactive) {
-      showToast(`⚡ Detected and loaded 3 corporate bank accounts from IFIMED statement files!`);
+      const parts = [];
+      if (detectedLabels.length) parts.push(detectedLabels.join(', '));
+      if (registered) parts.push(`${registered} new account${registered === 1 ? '' : 's'} added`);
+      if (updated) parts.push(`${updated} uploaded sheet${updated === 1 ? '' : 's'} re-read`);
+      if (moved) parts.push(`${moved} sheet${moved === 1 ? '' : 's'} moved to the matching A/c`);
+      if (imported) parts.push(`${imported} local file${imported === 1 ? '' : 's'} imported`);
+      if (parts.length) {
+        showToast(`Auto-detected accounts from statement files: ${parts[0]}${parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : ''}.`);
+      } else if (!localFiles.length && !workspaceHasStatementRows()) {
+        showToast('No local statement files found. Upload a bank statement first.', 'amber');
+      } else {
+        showToast('Accounts already match the uploaded statement files.', 'info');
+      }
     }
     return true;
+  } catch (err) {
+    console.error('Auto-detect accounts failed:', err);
+    if (interactive) showToast('Could not auto-detect accounts from the statement files.', 'amber');
+    return false;
   }
-  return false;
 }
 
 function promptDeleteBank(bankId, event) {
@@ -631,7 +722,16 @@ function renderBankSelector() {
   if (dropZoneBankName) dropZoneBankName.textContent = `${bank.name} CSV only`;
   if (pageBankSubheading) pageBankSubheading.textContent = `Turn incoming ${bank.name} credits into explicit invoice links.`;
   if (statementFilesSubtitle) statementFilesSubtitle.textContent = `Monthly uploads from ${bank.name}`;
-  if (footerBankDetails) footerBankDetails.textContent = `${bank.name} ${bank.type} (${bank.fullAccNo || bank.accNo}) · IFSC: ${bank.ifsc}`;
+  if (footerBankDetails) footerBankDetails.textContent = `${bank.name} ${bank.type} (${bank.fullAccNo || bank.accNo}) · IFSC: ${bank.ifsc || '—'}`;
+
+  const identityBankName = document.getElementById('identityBankName');
+  const identityAccNo = document.getElementById('identityAccNo');
+  const identityIfsc = document.getElementById('identityIfsc');
+  const identityBranch = document.getElementById('identityBranch');
+  if (identityBankName) identityBankName.textContent = bank.name || 'Bank';
+  if (identityAccNo) identityAccNo.textContent = bank.fullAccNo || bank.accNo || '—';
+  if (identityIfsc) identityIfsc.textContent = bank.ifsc || '—';
+  if (identityBranch) identityBranch.textContent = bank.branch || '';
 
   if (bankOptionsList) {
     bankOptionsList.innerHTML = '';
@@ -687,7 +787,7 @@ function renderStatementFilesTable() {
   if (!bank || !bank.sheets || bank.sheets.length === 0) {
     statementFilesTableBody.innerHTML = `
       <tr class="statement-files-empty-row">
-        <td colspan="4">
+image.png        <td colspan="5">
           <div class="statement-files-empty">
             <p>No statement sheets uploaded yet.</p>
             <p class="statement-files-empty-hint">Use Upload Statement above, or drop a CSV / Excel file on this table.</p>
@@ -717,14 +817,30 @@ function renderStatementFilesTable() {
       <td>${sheet.creditsCount || (sheet.records ? sheet.records.length : 0)} credits</td>
       <td>${sheet.debitsCount || (sheet.debitRecords ? sheet.debitRecords.length : 0)} debits</td>
       <td>${escapeHtml(sheet.uploadedOn || '—')}</td>
+      <td>
+        <button type="button" class="btn btn-outline statement-delete-btn" data-bank-id="${escapeHtml(bank.id)}" data-month-id="${escapeHtml(sheet.monthId)}" aria-label="Delete ${escapeHtml(sheet.label)} statement">
+          Delete
+        </button>
+      </td>
     `;
 
-    tr.addEventListener('click', () => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('.statement-delete-btn')) return;
       selectedMonthId = sheet.monthId;
       activeConfirmingRowId = null;
       renderAll();
       showToast(`Viewing ${sheet.label} statement`);
     });
+
+    const deleteBtn = tr.querySelector('.statement-delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = window.confirm(`Delete ${sheet.label} (${sheet.fileName || 'statement'}) and all its transactions from ${bank.name}?`);
+        if (!ok) return;
+        await deleteStatementSheet(bank.id, sheet.monthId);
+      });
+    }
 
     statementFilesTableBody.appendChild(tr);
   });
@@ -783,21 +899,15 @@ function switchMappingMode(mode, options) {
 
   // Update Table Headers
   if (thAmountLabel) {
-    if (mode === 'all') {
-      thAmountLabel.textContent = 'AMOUNT (INFLOW / OUTFLOW)';
-    } else if (mode === 'credit') {
-      thAmountLabel.textContent = 'CREDIT AMOUNT';
-    } else {
-      thAmountLabel.textContent = 'DEBIT AMOUNT';
-    }
+    thAmountLabel.textContent = 'Amount';
   }
   if (thMappingLabel) {
     if (mode === 'all') {
-      thMappingLabel.textContent = 'MATCHING RECORD (INVOICE / BILL)';
+      thMappingLabel.textContent = 'Mapping';
     } else if (mode === 'credit') {
-      thMappingLabel.textContent = 'INVOICE MAPPING';
+      thMappingLabel.textContent = 'Invoice';
     } else {
-      thMappingLabel.textContent = 'VENDOR BILL MAPPING';
+      thMappingLabel.textContent = 'Bill';
     }
   }
   if (footerSubtotalLabel) {
@@ -1103,12 +1213,12 @@ function renderCreditTable() {
     const amountClass = isDebit ? 'amount-debit' : 'amount-credit';
 
     tr.innerHTML = `
-      <td class="col-date">${escapeHtml(row.date)}</td>
-      <td class="col-narration">
+      <td class="col-date" title="${escapeHtml(row.date)}">${escapeHtml(row.date)}</td>
+      <td class="col-narration" title="${escapeHtml(row.narration)}">
         <div class="narration-primary">${escapeHtml(row.narration)}</div>
         ${row.payer ? `<div class="narration-secondary">${escapeHtml(row.payer)}</div>` : ''}
       </td>
-      <td class="col-ref">
+      <td class="col-ref" title="${escapeHtml(row.bankRef || '')}">
         <div class="ref-badge-wrap">
           <span class="badge-type ${badgeClass}">${escapeHtml(row.type)}</span>
           <span class="ref-code-text">${escapeHtml(formatBankRef(row.bankRef, row.type))}</span>
@@ -1576,95 +1686,186 @@ function executeUnlink() {
 // 7b. Auto-Match All Open Transactions with Statement Data
 // =============================================================================
 
-function autoMatchAllStatementData(interactive = true) {
-  const currentSheet = getCurrentSheet();
-  if (!currentSheet) return;
+function docNumberOf(doc) {
+  return String((doc && (doc.invoiceNo || doc.billNo)) || '').trim();
+}
 
-  const invMap = new Map();
-  appInvoices.forEach(i => invMap.set(i.invoiceNo.toLowerCase(), i));
-  const billMap = new Map();
-  appVendorBills.forEach(b => billMap.set(b.billNo.toLowerCase(), b));
+function partyNameOf(doc) {
+  return String((doc && (doc.guestName || doc.vendorName)) || '').trim();
+}
 
-  let matchedCredits = 0;
-  (currentSheet.records || []).forEach(r => {
-    if (r.status !== 'mapped') {
-      const match = (r.narration && r.narration.match(/IFB\d+/i)) || 
-                    (r.narration && r.narration.match(/CNB?\d+/i)) ||
-                    (r.bankRef && r.bankRef.match(/IFB\d+/i)) ||
-                    (r.bankRef && r.bankRef.match(/CNB?\d+/i));
-      const code = match ? match[0].toLowerCase() : null;
-      const doc = code ? (invMap.get(code) || billMap.get(code)) : null;
+function extractStatementDocCodes(text) {
+  const raw = String(text || '');
+  const found = [];
+  [
+    /\bIFB\d{3,}\b/gi,
+    /\bCNB\d{3,}\b/gi,
+    /\bINV[-_/\s]?\d{3,}\b/gi,
+    /\bBILL[-_/\s]?\d{3,}\b/gi
+  ].forEach(re => {
+    const hits = raw.match(re);
+    if (hits) hits.forEach(h => found.push(String(h).replace(/\s+/g, '').toUpperCase()));
+  });
+  return [...new Set(found)];
+}
 
-      if (doc) {
-        r.status = 'mapped';
-        r.mapping = {
-          invoiceNo: doc.invoiceNo || doc.billNo,
-          billNo: doc.billNo || doc.invoiceNo,
-          guestName: doc.guestName || doc.vendorName,
-          vendorName: doc.vendorName || doc.guestName,
-          mappedAt: (r.date || '31 Jul 2026') + ' 04:30 PM',
-          mappedBy: 'System (Reconciled from Statement)',
-          isNote: false
-        };
-        matchedCredits++;
-      } else {
-        const amtMatch = appInvoices.find(d => Math.abs(d.amount - r.amount) < 0.01);
-        if (amtMatch) {
-          r.status = 'mapped';
-          r.mapping = {
-            invoiceNo: amtMatch.invoiceNo,
-            billNo: amtMatch.invoiceNo,
-            guestName: amtMatch.guestName,
-            vendorName: amtMatch.guestName,
-            mappedAt: (r.date || '31 Jul 2026') + ' 04:30 PM',
-            mappedBy: 'System (Auto-Matched by Amount)',
-            isNote: false
-          };
-          matchedCredits++;
+function normalizePartyName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(pvt|ltd|limited|llc|inc|llp|bank|upi|mr|mrs|ms|dr)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function partyNamesMatch(a, b) {
+  const na = normalizePartyName(a);
+  const nb = normalizePartyName(b);
+  if (!na || !nb || na.length < 3 || nb.length < 3) return false;
+  if (na === nb || na.includes(nb) || nb.includes(na)) return true;
+  const ta = na.split(' ').filter(t => t.length > 2);
+  const tb = new Set(nb.split(' ').filter(t => t.length > 2));
+  if (!ta.length || !tb.size) return false;
+  const overlap = ta.filter(t => tb.has(t)).length;
+  return overlap >= 1 && (overlap / Math.min(ta.length, tb.size)) >= 0.5;
+}
+
+function collectMappedDocKeys() {
+  const used = new Set();
+  corporateBanks.forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      [].concat(sheet.records || [], sheet.debitRecords || []).forEach(row => {
+        if (row && row.status === 'mapped' && row.mapping) {
+          const key = String(row.mapping.invoiceNo || row.mapping.billNo || '').trim().toLowerCase();
+          if (key) used.add(key);
         }
-      }
+      });
+    });
+  });
+  return used;
+}
+
+function ensureCatalogDoc(code, row, isDebit) {
+  const upper = String(code || '').toUpperCase();
+  if (isDebit) {
+    let bill = appVendorBills.find(b => String(b.billNo || '').toLowerCase() === upper.toLowerCase());
+    if (!bill) {
+      bill = {
+        billNo: upper,
+        vendorName: row.payer || extractPartyFromNarration(row.narration) || 'Vendor',
+        amount: row.amount,
+        date: row.date,
+        category: 'Auto-detected from statement',
+        status: 'Paid',
+        settledAmount: row.amount
+      };
+      appVendorBills.unshift(bill);
     }
+    return bill;
+  }
+  let inv = appInvoices.find(i => String(i.invoiceNo || '').toLowerCase() === upper.toLowerCase());
+  if (!inv) {
+    inv = {
+      invoiceNo: upper,
+      guestName: row.payer || extractPartyFromNarration(row.narration) || 'Customer',
+      amount: row.amount,
+      date: row.date,
+      category: 'Auto-detected from statement',
+      status: 'Paid',
+      settledAmount: row.amount
+    };
+    appInvoices.unshift(inv);
+  }
+  return inv;
+}
+
+function findAutoMatchDoc(row, catalog, used, isDebit) {
+  const haystack = `${row.narration || ''} ${row.bankRef || ''} ${row.payer || ''}`;
+  const hay = haystack.toLowerCase();
+
+  const catalogHits = (catalog || []).filter(doc => {
+    const no = docNumberOf(doc);
+    return no && no.length >= 4 && !used.has(no.toLowerCase()) && hay.includes(no.toLowerCase());
+  });
+  if (catalogHits.length === 1) {
+    return { doc: catalogHits[0], reason: 'System (Reconciled from Statement)' };
+  }
+  if (catalogHits.length > 1) {
+    const named = catalogHits.filter(doc => partyNamesMatch(row.payer || row.narration, partyNameOf(doc)));
+    if (named.length === 1) return { doc: named[0], reason: 'System (Reconciled from Statement)' };
+  }
+
+  const codes = extractStatementDocCodes(haystack);
+  const preferred = isDebit
+    ? codes.filter(c => /^CNB|^BILL/.test(c)).concat(codes)
+    : codes.filter(c => /^IFB|^INV/.test(c)).concat(codes);
+  for (const code of preferred) {
+    if (used.has(code.toLowerCase())) continue;
+    const existing = (catalog || []).find(doc => docNumberOf(doc).toLowerCase() === code.toLowerCase());
+    return { doc: existing || ensureCatalogDoc(code, row, isDebit), reason: 'System (Reconciled from Statement)' };
+  }
+
+  const amountHits = (catalog || []).filter(doc =>
+    !used.has(docNumberOf(doc).toLowerCase()) &&
+    Math.abs(Number(doc.amount) - Number(row.amount)) < 0.01
+  );
+  if (amountHits.length === 1 && partyNamesMatch(row.payer || row.narration, partyNameOf(amountHits[0]))) {
+    return { doc: amountHits[0], reason: 'System (Auto-Matched by Amount & Name)' };
+  }
+  if (amountHits.length === 1) {
+    return { doc: amountHits[0], reason: 'System (Auto-Matched by Amount)' };
+  }
+  return null;
+}
+
+function applyAutoMapping(row, doc, isDebit, mappedBy) {
+  const docNo = isDebit ? (doc.billNo || doc.invoiceNo) : (doc.invoiceNo || doc.billNo);
+  const party = isDebit ? (doc.vendorName || doc.guestName) : (doc.guestName || doc.vendorName);
+  row.status = 'mapped';
+  row.mapping = {
+    invoiceNo: doc.invoiceNo || doc.billNo || docNo,
+    billNo: doc.billNo || doc.invoiceNo || docNo,
+    guestName: party || row.payer || '',
+    vendorName: party || row.payer || '',
+    mappedAt: new Date().toLocaleDateString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }),
+    mappedBy,
+    isNote: false
+  };
+  return String(docNo || '').toLowerCase();
+}
+
+function autoMatchAllStatementData(interactive = true) {
+  const bank = getActiveBank();
+  const sheets = (bank && Array.isArray(bank.sheets)) ? bank.sheets : [];
+  const openRows = [];
+  sheets.forEach(sheet => {
+    (sheet.records || []).forEach(r => {
+      if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: false });
+    });
+    (sheet.debitRecords || []).forEach(r => {
+      if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: true });
+    });
   });
 
-  let matchedDebits = 0;
-  (currentSheet.debitRecords || []).forEach(r => {
-    if (r.status !== 'mapped') {
-      const match = (r.narration && r.narration.match(/CNB?\d+/i)) ||
-                    (r.bankRef && r.bankRef.match(/CNB?\d+/i)) ||
-                    (r.narration && r.narration.match(/IFB\d+/i)) ||
-                    (r.bankRef && r.bankRef.match(/IFB\d+/i));
-      const code = match ? match[0].toLowerCase() : null;
-      const doc = code ? (billMap.get(code) || invMap.get(code)) : null;
+  if (!openRows.length) {
+    if (interactive) showToast('No open transactions to auto-match on this account.', 'amber');
+    return 0;
+  }
 
-      if (doc) {
-        r.status = 'mapped';
-        r.mapping = {
-          billNo: doc.billNo || doc.invoiceNo,
-          invoiceNo: doc.invoiceNo || doc.billNo,
-          vendorName: doc.vendorName || doc.guestName,
-          guestName: doc.guestName || doc.vendorName,
-          mappedAt: (r.date || '31 Jul 2026') + ' 05:15 PM',
-          mappedBy: 'System (Reconciled from Statement)',
-          isNote: false
-        };
-        matchedDebits++;
-      } else {
-        const amtMatch = appVendorBills.find(d => Math.abs(d.amount - r.amount) < 0.01);
-        if (amtMatch) {
-          r.status = 'mapped';
-          r.mapping = {
-            billNo: amtMatch.billNo,
-            invoiceNo: amtMatch.billNo,
-            vendorName: amtMatch.vendorName,
-            guestName: amtMatch.vendorName,
-            mappedAt: (r.date || '31 Jul 2026') + ' 05:15 PM',
-            mappedBy: 'System (Auto-Matched by Amount)',
-            isNote: false
-          };
-          matchedDebits++;
-        }
-      }
-    }
+  const used = collectMappedDocKeys();
+  let matchedCredits = 0;
+  let matchedDebits = 0;
+
+  openRows.forEach(({ row, isDebit }) => {
+    const catalog = isDebit ? appVendorBills : appInvoices;
+    const found = findAutoMatchDoc(row, catalog, used, isDebit);
+    if (!found) return;
+    const key = applyAutoMapping(row, found.doc, isDebit, found.reason);
+    if (key) used.add(key);
+    if (isDebit) matchedDebits++;
+    else matchedCredits++;
   });
 
   const totalMatched = matchedCredits + matchedDebits;
@@ -1672,11 +1873,14 @@ function autoMatchAllStatementData(interactive = true) {
 
   if (interactive) {
     if (totalMatched > 0) {
-      showToast(`⚡ Auto-matched & reconciled ${totalMatched} statement record${totalMatched !== 1 ? 's' : ''}!`);
+      showToast(`Auto-matched ${totalMatched} open transaction${totalMatched === 1 ? '' : 's'} (${matchedCredits} credit${matchedCredits === 1 ? '' : 's'}, ${matchedDebits} debit${matchedDebits === 1 ? '' : 's'}).`);
+    } else if (appInvoices.length === 0 && appVendorBills.length === 0) {
+      showToast('No invoice or bill numbers on these statements, and the catalogs are empty. Add invoices/bills first.', 'amber');
     } else {
-      showToast('All statement records are already reconciled according to the statement files.');
+      showToast('No unique invoice or bill match for the open transactions.', 'amber');
     }
   }
+  return totalMatched;
 }
 
 // =============================================================================
@@ -1715,20 +1919,147 @@ function parseCsvLine(line, delimiter = ',') {
 function isDateLikeValue(val) {
   const str = String(val == null ? '' : val).trim();
   if (!str) return false;
-  if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/.test(str)) return true;
-  if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(str)) return true;
-  if (/^\d{1,2}[\s\-\/][A-Za-z]{3,9}[\s\-\/,]+\d{2,4}$/.test(str)) return true;
-  if (/^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}$/.test(str)) return true;
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const n = parseFloat(str);
+    return n >= 36526 && n <= 62000;
+  }
+  if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i.test(str)) return true;
+  if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i.test(str)) return true;
+  if (/^\d{1,2}[\s\-\/][A-Za-z]{3,9}[\s\-\/,]+\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/i.test(str)) return true;
+  if (/^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/i.test(str)) return true;
+  if (/^[A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/.test(str)) return true;
   if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s*[-–to]+\s*\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/i.test(str)) return true;
   return false;
 }
 
 function isValidTransactionDate(dateStr) {
   const str = String(dateStr == null ? '' : dateStr).trim();
-  if (!str || str.length > 28) return false;
+  if (!str || str.length > 48) return false;
   if (/^\d{1,3}$/.test(str)) return false;
   if (/\s[-–]\s/.test(str) || /\s+to\s+/i.test(str)) return false;
   return isDateLikeValue(str);
+}
+
+const MONTH_NAMES_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const MONTH_ABBR_INDEX = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+};
+
+function monthLabelFromId(monthId) {
+  const parts = String(monthId || '').split('-');
+  const year = parts[0] || '';
+  const idx = Math.max(0, parseInt(parts[1], 10) - 1);
+  return `${MONTH_NAMES_LONG[idx] || 'Month'} ${year}`.trim();
+}
+
+function formatMonthId(year, mon) {
+  if (!mon || mon < 1 || mon > 12 || !year || year < 2000 || year > 2100) return null;
+  return `${year}-${String(mon).padStart(2, '0')}`;
+}
+
+function parseDateToMonthId(dateStr) {
+  const s = String(dateStr || '').trim();
+  if (!s) return null;
+
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial >= 30000 && serial <= 65000) {
+      const utc = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+      return formatMonthId(utc.getUTCFullYear(), utc.getUTCMonth() + 1);
+    }
+  }
+
+  let m = s.match(/(?:^|[^\d])(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?!\d)/);
+  if (m) {
+    const id = formatMonthId(parseInt(m[1], 10), parseInt(m[2], 10));
+    if (id) return id;
+  }
+
+  m = s.match(/(?:^|[^\d])(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?!\d)/);
+  if (m) {
+    let day = parseInt(m[1], 10);
+    let mon = parseInt(m[2], 10);
+    let year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    if (mon > 12 && day <= 12) {
+      const tmp = mon;
+      mon = day;
+      day = tmp;
+    }
+    const id = formatMonthId(year, mon);
+    if (id) return id;
+  }
+
+  m = s.match(/(\d{1,2})[\s\/\-]([A-Za-z]{3,9})[\s\/\-,]+(\d{2,4})/);
+  if (m) {
+    const mon = MONTH_ABBR_INDEX[m[2].toLowerCase().slice(0, 3)];
+    let year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    const id = formatMonthId(year, mon);
+    if (id) return id;
+  }
+
+  m = s.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})/);
+  if (m) {
+    const mon = MONTH_ABBR_INDEX[m[1].toLowerCase().slice(0, 3)];
+    let year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    const id = formatMonthId(year, mon);
+    if (id) return id;
+  }
+
+  m = s.match(/[A-Za-z]{3}\s+([A-Za-z]{3})\s+\d{1,2}\s+(\d{4})/);
+  if (m) {
+    const mon = MONTH_ABBR_INDEX[m[1].toLowerCase()];
+    const id = formatMonthId(parseInt(m[2], 10), mon);
+    if (id) return id;
+  }
+
+  const parsed = Date.parse(s);
+  if (!Number.isNaN(parsed)) {
+    const dt = new Date(parsed);
+    if (!Number.isNaN(dt.getTime())) {
+      return formatMonthId(dt.getFullYear(), dt.getMonth() + 1);
+    }
+  }
+
+  return null;
+}
+
+function normalizeDisplayedDate(text) {
+  const s = String(text || '').trim();
+  const dmy = s.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+  if (dmy) return dmy[1];
+  const ymd = s.match(/(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+  if (ymd) return ymd[1];
+  const named = s.match(/(\d{1,2}[\s\-\/][A-Za-z]{3,9}[\s\-\/,]+\d{2,4})/);
+  if (named) return named[1];
+  return s;
+}
+
+function extractRowDateAndMonth(cols, preferredIdx) {
+  const tryCell = (raw, allowSerial) => {
+    const text = String(raw == null ? '' : raw).trim();
+    if (!text) return null;
+    if (/^\d{5}(\.\d+)?$/.test(text) && !allowSerial) return null;
+    const monthId = parseDateToMonthId(text);
+    if (!monthId) return null;
+    return { date: normalizeDisplayedDate(text), monthId };
+  };
+  if (preferredIdx >= 0) {
+    const hit = tryCell(cols[preferredIdx], true);
+    if (hit) return hit;
+  }
+  for (let i = 0; i < (cols || []).length; i++) {
+    if (i === preferredIdx) continue;
+    const hit = tryCell(cols[i], false);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function amountLooksLikeDateDigits(amount, dateStr) {
@@ -1891,6 +2222,18 @@ function extractPartyFromNarration(narration) {
   return str.slice(0, 60).trim();
 }
 
+function rankDateHeader(clean) {
+  const s = String(clean || '').trim();
+  if (!s) return -1;
+  if (/^(transaction date|txn date|tran date|trans date|txn dt|posted date|posting date|entry date)$/.test(s)) return 10;
+  if (/transaction date|txn date|tran date|trans date/.test(s)) return 9;
+  if (s === 'date' || s === 'dt' || s === 'vch date' || s === 'bill date') return 7;
+  if (/^(value date|booking date|value dt)$/.test(s)) return 4;
+  if (s.includes('date') && !s.includes('update') && !s.includes('due') && !s.includes('period')) return 3;
+  if (s.includes('txn dt')) return 8;
+  return -1;
+}
+
 function findStatementHeaders(lines, delimiter) {
   let bestHeader = null;
   let maxScore = -1;
@@ -1908,20 +2251,18 @@ function findStatementHeaders(lines, delimiter) {
     if (rawCols.length < 2) continue;
 
     let dateCol = -1, narrationCol = -1, refCol = -1, creditCol = -1, debitCol = -1, amountCol = -1, drCrCol = -1, payerCol = -1;
+    let dateColScore = -1;
     let score = 0;
 
     rawCols.forEach((c, idx) => {
       const clean = c.replace(/[_\-\/\.\(\)\s]+/g, ' ').trim();
+      const dateRank = rankDateHeader(clean);
 
-      // Date column
-      if (dateCol === -1 && (
-        clean === 'date' || clean === 'dt' || clean === 'txn date' || clean === 'trans date' ||
-        clean === 'transaction date' || clean === 'value date' || clean === 'booking date' ||
-        clean === 'posting date' || clean === 'entry date' || clean === 'vch date' || clean === 'bill date' ||
-        clean.includes('date') || clean.includes('txn dt')
-      )) {
+      // Prefer Transaction Date over Value Date / generic Date
+      if (dateRank > dateColScore) {
         dateCol = idx;
-        score += 4;
+        dateColScore = dateRank;
+        score += dateRank >= 8 ? 6 : 4;
       }
 
       // Narration / Description / Particulars
@@ -2030,11 +2371,11 @@ function readStatementFile(file, onLoaded) {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const csvText = XLSX.utils.sheet_to_csv(worksheet);
-        onLoaded(csvText, fileName);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellNF: false, dateNF: 'dd/mm/yyyy' });
+        const csvText = workbook.SheetNames.map(name =>
+          XLSX.utils.sheet_to_csv(workbook.Sheets[name], { dateNF: 'dd/mm/yyyy' })
+        ).join('\n');
+        onLoaded(csvText, fileName, { sheetNames: workbook.SheetNames.slice() });
       } catch (err) {
         console.error('Error parsing Excel statement:', err);
         showToast('Failed to parse Excel statement: ' + err.message, 'error');
@@ -2054,7 +2395,7 @@ function readStatementFile(file, onLoaded) {
     if (text.charCodeAt(0) === 0xFEFF) {
       text = text.slice(1);
     }
-    onLoaded(text, fileName);
+    onLoaded(text, fileName, { sheetNames: [] });
   };
   reader.onerror = (err) => {
     console.error('FileReader error on CSV:', err);
@@ -2063,7 +2404,163 @@ function readStatementFile(file, onLoaded) {
   reader.readAsText(file);
 }
 
-function detectBankFromCsv(csvText, fileName = '') {
+const IFSC_BANK_NAMES = {
+  ICIC: 'ICICI Bank',
+  UTIB: 'Axis Bank',
+  KKBK: 'Kotak Mahindra Bank',
+  CNRB: 'Canara Bank',
+  HDFC: 'HDFC Bank',
+  SBIN: 'State Bank of India',
+  PUNB: 'Punjab National Bank',
+  BARB: 'Bank of Baroda',
+  INDB: 'IndusInd Bank',
+  YESB: 'YES Bank',
+  UBIN: 'Union Bank of India',
+  FDRL: 'Federal Bank',
+  IDFB: 'IDFC First Bank',
+  SCBL: 'Standard Chartered'
+};
+
+function statementMetadataText(csvText) {
+  const lines = String(csvText || '').split(/\r?\n/);
+  const cut = lines.findIndex(line => {
+    const compact = String(line || '').replace(/^,+/, '').toLowerCase();
+    return /value date.*transaction date|transaction date.*value date/.test(compact) ||
+      /^(s\s*no|si\.?\s*no|date\s*[,;]|txn date|transaction date)/.test(compact);
+  });
+  return lines.slice(0, cut >= 0 ? cut : Math.min(18, lines.length)).join('\n');
+}
+
+function firstAccountDigits(text) {
+  const m = String(text || '').match(/\b(\d{9,18})\b/);
+  return m ? m[1] : '';
+}
+
+function accountsEqual(a, b) {
+  const da = digitsOnly(a);
+  const db = digitsOnly(b);
+  if (!da || !db || da.length < 8 || db.length < 8) return false;
+  return da === db || da.endsWith(db) || db.endsWith(da);
+}
+
+function applyLabelledBankValue(details, label, value) {
+  const key = String(label || '').toLowerCase().replace(/[_./]/g, ' ').replace(/\s+/g, ' ').trim();
+  const raw = String(value || '').replace(/^["']|["']$/g, '').trim();
+  if (!key || !raw) return;
+  if (!details.fullAccNo && /account|a\/c|acct/.test(key) && !/statement|type|description|name/.test(key)) {
+    const acc = firstAccountDigits(raw) || digitsOnly(raw);
+    if (acc.length >= 8) details.fullAccNo = acc;
+    const holder = raw.split(/\s-\s/)[1];
+    if (holder && !details.holder) details.holder = holder.replace(/\(.*?\)/g, '').trim().slice(0, 80);
+  } else if (!details.ifsc && /ifsc/.test(key)) {
+    const ifsc = raw.match(/\b([A-Za-z]{4}0[A-Za-z0-9]{6})\b/);
+    if (ifsc) details.ifsc = ifsc[1].toUpperCase();
+  } else if (!details.branch && /branch/.test(key) && !/ifsc/.test(key)) {
+    details.branch = raw.replace(/\s+/g, ' ').slice(0, 80);
+  } else if (!details.holder && /(account name|customer|holder|name of)/.test(key)) {
+    details.holder = raw.slice(0, 80);
+  } else if (!details.name && /bank name|^bank$/.test(key) && /bank/i.test(raw)) {
+    details.name = raw.slice(0, 60);
+  }
+}
+
+function detectStatementLayout(csvText, fileName = '', sheetNames = []) {
+  const sheets = (sheetNames || []).join(' ');
+  const head = String(csvText || '').split(/\r?\n/).slice(0, 22).join('\n');
+  const blob = `${fileName || ''}\n${sheets}\n${head}`;
+
+  if (/optransactionhistory/i.test(sheets) || /optransactionhistory/i.test(blob)) {
+    return { name: 'ICICI Bank', idPrefix: 'icici', reason: 'ICICI OpTransactionHistory statement' };
+  }
+  const iciciHits = [
+    /detailed statement/i.test(blob),
+    /withdrawal amount\s*\(\s*inr\s*\)/i.test(blob),
+    /deposit amount\s*\(\s*inr\s*\)/i.test(blob),
+    /transactions list\s*-/i.test(blob),
+    /transaction date from/i.test(blob)
+  ].filter(Boolean).length;
+  if (iciciHits >= 2) {
+    return { name: 'ICICI Bank', idPrefix: 'icici', reason: 'ICICI detailed statement layout' };
+  }
+  return null;
+}
+
+function extractStatementBankDetails(csvText, fileName = '', sheetNames = []) {
+  const meta = statementMetadataText(csvText);
+  const metaLines = meta.split(/\r?\n/);
+  const details = { name: '', fullAccNo: '', ifsc: '', branch: '', holder: '', idPrefix: '' };
+
+  const accLoose = meta.match(/account[^\d]{0,40}(\d{9,18})/i);
+  if (accLoose) details.fullAccNo = accLoose[1];
+
+  const ifscMatch = meta.match(/\b([A-Za-z]{4}0[A-Za-z0-9]{6})\b/);
+  if (ifscMatch) details.ifsc = ifscMatch[1].toUpperCase();
+
+  const branchMatch = meta.match(/branch\s*[:.\-]*\s*([A-Za-z0-9 ,.\-\/]{3,70})/i);
+  if (branchMatch) details.branch = branchMatch[1].replace(/,+\s*$/, '').trim();
+
+  metaLines.forEach(line => {
+    const cols = parseCsvLine(line, detectCsvDelimiter(line)).map(c => String(c || '').trim()).filter(Boolean);
+    if (cols.length < 2) {
+      const colon = String(line || '').split(':');
+      if (colon.length >= 2) applyLabelledBankValue(details, colon[0], colon.slice(1).join(':'));
+      return;
+    }
+    cols.forEach((col, idx) => {
+      if (!/account|ifsc|branch|bank name|a\/c|acct/i.test(col)) return;
+      const rest = cols.slice(idx + 1).join(' ');
+      applyLabelledBankValue(details, col, rest);
+    });
+  });
+
+  const listHolder = meta.match(/transactions list\s*-\s*([A-Za-z .]+?)\s*-\s*\d{6,}/i);
+  if (listHolder && !details.holder) details.holder = listHolder[1].trim();
+
+  const layout = detectStatementLayout(csvText, fileName, sheetNames);
+  if (layout) {
+    details.name = details.name || layout.name;
+    details.idPrefix = layout.idPrefix;
+  }
+  if (!details.name && details.ifsc) {
+    details.name = IFSC_BANK_NAMES[details.ifsc.slice(0, 4)] || '';
+    details.idPrefix = details.idPrefix || String(details.ifsc.slice(0, 4) || '').toLowerCase();
+  }
+
+  const fileMeta = `${fileName || ''} ${(sheetNames || []).join(' ')} ${meta}`;
+  if (!details.name) {
+    const brandHit = [
+      { name: 'ICICI Bank', idPrefix: 'icici', re: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i },
+      { name: 'Axis Bank', idPrefix: 'axis', re: /(?:^|[^a-z0-9])axis(?:[^a-z0-9]|$)/i },
+      { name: 'Kotak Mahindra Bank', idPrefix: 'kotak', re: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i },
+      { name: 'Canara Bank', idPrefix: 'canara', re: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i },
+      { name: 'HDFC Bank', idPrefix: 'hdfc', re: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i }
+    ].find(b => b.re.test(fileMeta));
+    if (brandHit) {
+      details.name = brandHit.name;
+      details.idPrefix = brandHit.idPrefix;
+    }
+  }
+
+  if (details.fullAccNo && details.fullAccNo.length < 8) details.fullAccNo = '';
+  return details;
+}
+
+function applyExtractedBankDetails(bank, extracted) {
+  if (!bank || !extracted) return bank;
+  if (extracted.fullAccNo && extracted.fullAccNo.length >= 6) {
+    const current = digitsOnly(bank.fullAccNo);
+    if (!current || current === extracted.fullAccNo || current.slice(-4) === extracted.fullAccNo.slice(-4)) {
+      bank.fullAccNo = extracted.fullAccNo;
+      bank.accNo = `••••${extracted.fullAccNo.slice(-4)}`;
+    }
+  }
+  if (extracted.ifsc) bank.ifsc = extracted.ifsc;
+  if (extracted.name) bank.name = extracted.name;
+  if (extracted.branch) bank.branch = extracted.branch;
+  return bank;
+}
+
+function detectBankFromCsv(csvText, fileName = '', options = {}) {
   if (!Array.isArray(corporateBanks) || corporateBanks.length === 0) {
     corporateBanks = [
       {
@@ -2079,110 +2576,125 @@ function detectBankFromCsv(csvText, fileName = '') {
     ];
   }
 
-  const textSample = (fileName + ' ' + csvText.slice(0, 8000)).toLowerCase();
+  const sheetNames = (options && options.sheetNames) || [];
+  const extracted = extractStatementBankDetails(csvText, fileName, sheetNames);
+  const meta = statementMetadataText(csvText);
+  const fileMeta = `${fileName || ''} ${sheetNames.join(' ')} ${meta}`;
 
-  // 1. Check existing corporate banks first
-  for (const b of corporateBanks) {
-    if (b.fullAccNo && textSample.includes(b.fullAccNo.toLowerCase())) {
-      return { bank: b, isNew: false, reason: `Matched full account number ${b.fullAccNo}` };
-    }
-    if (b.ifsc && textSample.includes(b.ifsc.toLowerCase())) {
-      return { bank: b, isNew: false, reason: `Matched IFSC ${b.ifsc}` };
-    }
-    const suffix = (b.accNo || '').replace(/[^\d]/g, '');
-    if (suffix && suffix.length >= 4) {
-      const suffixRegex = new RegExp(`(?:a\\/c|acct|acc|account|no|no\\.|#)[^\\w\\d]{0,6}\\d*${suffix}`, 'i');
-      if (suffixRegex.test(textSample) || (fileName && fileName.toLowerCase().includes(suffix))) {
-        return { bank: b, isNew: false, reason: `Matched account suffix ••••${suffix}` };
-      }
-    }
-    const bName = b.name.toLowerCase();
-    const cleanBName = bName.replace(/\s+bank/g, '').trim();
-    if (textSample.includes(bName) || (fileName && fileName.toLowerCase().includes(cleanBName))) {
-      return { bank: b, isNew: false, reason: `Matched bank name "${b.name}"` };
-    }
-  }
-
-  // 2. Signature match for known Indian Commercial Banks
-  const bankSignatures = [
-    { name: 'ICICI Bank', keywords: ['icici', 'icic', 'icic0', '000205003021'], ifscPrefix: 'ICIC', defaultIfsc: 'ICIC0000002', idPrefix: 'icici' },
-    { name: 'Axis Bank', keywords: ['axis', 'utib', 'utib0', '921020007419821'], ifscPrefix: 'UTIB', defaultIfsc: 'UTIB0000042', idPrefix: 'axis' },
-    { name: 'Kotak Mahindra Bank', keywords: ['kotak', 'kkbk', 'kkbk0', '711200988502'], ifscPrefix: 'KKBK', defaultIfsc: 'KKBK0000421', idPrefix: 'kotak' },
-    { name: 'Canara Bank', keywords: ['canara', 'cnrb', 'cnrb0', '129088192019'], ifscPrefix: 'CNRB', defaultIfsc: 'CNRB0001928', idPrefix: 'canara' },
-    { name: 'HDFC Bank', keywords: ['hdfc', 'hdfc0'], ifscPrefix: 'HDFC', defaultIfsc: 'HDFC0000128', idPrefix: 'hdfc' },
-    { name: 'State Bank of India', keywords: ['sbi', 'sbin', 'state bank'], ifscPrefix: 'SBIN', defaultIfsc: 'SBIN0000412', idPrefix: 'sbi' },
-    { name: 'Punjab National Bank', keywords: ['punjab national', 'pnb', 'punb'], ifscPrefix: 'PUNB', defaultIfsc: 'PUNB0002100', idPrefix: 'pnb' },
-    { name: 'Bank of Baroda', keywords: ['bank of baroda', 'bob', 'barb'], ifscPrefix: 'BARB', defaultIfsc: 'BARB0000010', idPrefix: 'bob' },
-    { name: 'IndusInd Bank', keywords: ['indusind', 'indb'], ifscPrefix: 'INDB', defaultIfsc: 'INDB0000050', idPrefix: 'indusind' },
-    { name: 'YES Bank', keywords: ['yes bank', 'yesb'], ifscPrefix: 'YESB', defaultIfsc: 'YESB0000001', idPrefix: 'yes' },
-    { name: 'Union Bank of India', keywords: ['union bank', 'ubin'], ifscPrefix: 'UBIN', defaultIfsc: 'UBIN0000001', idPrefix: 'union' },
-    { name: 'Federal Bank', keywords: ['federal bank', 'fdrl'], ifscPrefix: 'FDRL', defaultIfsc: 'FDRL0000101', idPrefix: 'federal' },
-    { name: 'IDFC First Bank', keywords: ['idfc', 'idfb'], ifscPrefix: 'IDFB', defaultIfsc: 'IDFB0000101', idPrefix: 'idfc' },
-    { name: 'Standard Chartered', keywords: ['standard chartered', 'scbl'], ifscPrefix: 'SCBL', defaultIfsc: 'SCBL0000101', idPrefix: 'scb' }
+  const brands = [
+    { idPrefix: 'icici', name: 'ICICI Bank', fileRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, ifscRe: /\bicic0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'axis', name: 'Axis Bank', fileRe: /(?:^|[^a-z0-9])axis(?:[^a-z0-9]|$)/i, metaRe: /\baxis\s+bank\b|\butib0/i, ifscRe: /\butib0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'kotak', name: 'Kotak Mahindra Bank', fileRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, ifscRe: /\bkkbk0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'canara', name: 'Canara Bank', fileRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, ifscRe: /\bcnrb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'hdfc', name: 'HDFC Bank', fileRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, ifscRe: /\bhdfc0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'sbi', name: 'State Bank of India', fileRe: /\b(?:sbi|state[_\s-]?bank)\b/i, metaRe: /\bstate bank\b|\bsbin0/i, ifscRe: /\bsbin0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'pnb', name: 'Punjab National Bank', fileRe: /\bpnb\b|punjab\s+national/i, metaRe: /\bpunjab national\b|\bpunb0/i, ifscRe: /\bpunb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'bob', name: 'Bank of Baroda', fileRe: /\bbaroda\b/i, metaRe: /\bbank of baroda\b|\bbarb0/i, ifscRe: /\bbarb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'indusind', name: 'IndusInd Bank', fileRe: /\bindusind\b/i, metaRe: /\bindusind\b|\bindb0/i, ifscRe: /\bindb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'yes', name: 'YES Bank', fileRe: /\byes[_\s-]?bank\b/i, metaRe: /\byes bank\b|\byesb0/i, ifscRe: /\byesb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'union', name: 'Union Bank of India', fileRe: /\bunion[_\s-]?bank\b/i, metaRe: /\bunion bank\b|\bubin0/i, ifscRe: /\bubin0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'federal', name: 'Federal Bank', fileRe: /\bfederal\s+bank\b/i, metaRe: /\bfederal bank\b|\bfdrl0/i, ifscRe: /\bfdrl0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'idfc', name: 'IDFC First Bank', fileRe: /\bidfc\b/i, metaRe: /\bidfc\b|\bidfb0/i, ifscRe: /\bidfb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
+    { idPrefix: 'scb', name: 'Standard Chartered', fileRe: /\bstandard[_\s-]?chartered\b/i, metaRe: /\bstandard chartered\b|\bscbl0/i, ifscRe: /\bscbl0[a-z0-9]{6}\b/i, defaultIfsc: '' }
   ];
 
-  for (const sig of bankSignatures) {
-    const matched = sig.keywords.find(kw => textSample.includes(kw));
-    if (matched) {
-      const existing = corporateBanks.find(b =>
-        b.name.toLowerCase().includes(sig.idPrefix) || b.id.toLowerCase().includes(sig.idPrefix)
-      );
-      if (existing) {
-        return { bank: existing, isNew: false, reason: `Identified ${existing.name} via "${matched}"` };
-      }
+  function findBrand(idPrefix, name) {
+    return brands.find(b => b.idPrefix === idPrefix) ||
+      brands.find(b => name && b.name.toLowerCase() === String(name).toLowerCase()) ||
+      { idPrefix: idPrefix || 'bank', name: name || 'Corporate Bank', defaultIfsc: '' };
+  }
 
-      // Auto-register new bank
-      let foundAcc = '';
-      const accMatch = textSample.match(/(?:a\/c|account|acct|acc|no|#)[^\d]{0,8}(\d{9,18})/i);
-      if (accMatch) {
-        foundAcc = accMatch[1];
-      } else {
-        const digitMatch = csvText.slice(0, 3000).match(/\b\d{10,16}\b/);
-        if (digitMatch) foundAcc = digitMatch[0];
-      }
+  function registerBankFromExtracted(brand, reason, confidence) {
+    const foundAcc = extracted.fullAccNo || '';
+    const accSuffix = foundAcc ? foundAcc.slice(-4) : String(Math.floor(1000 + Math.random() * 9000));
+    const existingId = `${brand.idPrefix}-${accSuffix}`;
+    const already = corporateBanks.find(b => b.id === existingId || accountsEqual(b.fullAccNo, foundAcc));
+    if (already) {
+      return { bank: already, isNew: false, confidence, reason, extracted };
+    }
+    const newBank = {
+      id: existingId,
+      name: brand.name,
+      type: 'Current A/c',
+      accNo: `••••${accSuffix}`,
+      fullAccNo: foundAcc || '',
+      ifsc: extracted.ifsc || brand.defaultIfsc || '',
+      branch: extracted.branch || extracted.holder || '',
+      sheets: []
+    };
+    corporateBanks.push(newBank);
+    return {
+      bank: newBank,
+      isNew: true,
+      confidence,
+      reason: reason || `Registered ${brand.name} A/c ${newBank.accNo} from the statement`,
+      extracted
+    };
+  }
 
-      const accSuffix = foundAcc ? foundAcc.slice(-4) : String(Math.floor(1000 + Math.random() * 9000));
-      const fullAcc = foundAcc || `00000000${accSuffix}`;
-      const newBankId = `${sig.idPrefix}-${accSuffix}`;
-
-      const ifscMatch = textSample.match(/\b([A-Z]{4}0[A-Z0-9]{6})\b/i);
-      const ifsc = ifscMatch ? ifscMatch[1].toUpperCase() : sig.defaultIfsc;
-
-      const newBank = {
-        id: newBankId,
-        name: sig.name,
-        type: 'Current A/c',
-        accNo: `••••${accSuffix}`,
-        fullAccNo: fullAcc,
-        ifsc: ifsc,
-        branch: 'Corporate Commercial Branch',
-        sheets: []
-      };
-
-      corporateBanks.push(newBank);
-      return { bank: newBank, isNew: true, reason: `Auto-registered new account ${sig.name} (${newBank.accNo})` };
+  if (extracted.fullAccNo && extracted.fullAccNo.length >= 8) {
+    const byAcc = corporateBanks.find(b => accountsEqual(b.fullAccNo, extracted.fullAccNo));
+    if (byAcc) {
+      return { bank: byAcc, isNew: false, confidence: 'high', reason: `Read A/c ${extracted.fullAccNo} from the statement header`, extracted };
     }
   }
 
-  // 3. Fallback to active bank or first bank
-  const active = getActiveBank() || corporateBanks[0];
-  if (active) {
-    return { bank: active, isNew: false, reason: `Defaulted to current active bank (${active.name})` };
+  if (extracted.ifsc) {
+    const byIfsc = corporateBanks.find(b => String(b.ifsc || '').toUpperCase() === extracted.ifsc);
+    if (byIfsc && (!extracted.fullAccNo || accountsEqual(byIfsc.fullAccNo, extracted.fullAccNo))) {
+      return { bank: byIfsc, isNew: false, confidence: 'high', reason: `Read IFSC ${extracted.ifsc} from the statement header`, extracted };
+    }
   }
 
-  // Fallback create default bank if list was completely empty
+  if (extracted.idPrefix || extracted.name) {
+    const brand = findBrand(extracted.idPrefix, extracted.name);
+    if (extracted.fullAccNo) {
+      return registerBankFromExtracted(brand, extracted.idPrefix ? `Identified ${brand.name} from the statement layout and A/c ${extracted.fullAccNo}` : `Identified ${brand.name}`, 'high');
+    }
+    const sameBrand = corporateBanks.filter(b =>
+      String(b.id || '').toLowerCase().includes(brand.idPrefix) ||
+      String(b.name || '').toLowerCase().includes(brand.idPrefix)
+    );
+    if (sameBrand.length === 1) {
+      return { bank: sameBrand[0], isNew: false, confidence: 'medium', reason: `Identified ${brand.name}; confirm the account`, extracted };
+    }
+    return registerBankFromExtracted(brand, `Identified ${brand.name}`, 'medium');
+  }
+
+  const named = brands.find(brand => brand.fileRe.test(fileName || '') || brand.metaRe.test(fileMeta) || brand.ifscRe.test(meta));
+  if (named) {
+    extracted.name = extracted.name || named.name;
+    extracted.idPrefix = extracted.idPrefix || named.idPrefix;
+    if (extracted.fullAccNo) {
+      return registerBankFromExtracted(named, `Filename/header matches ${named.name} A/c ${extracted.fullAccNo}`, 'high');
+    }
+    const sameBrand = corporateBanks.filter(b =>
+      String(b.id || '').toLowerCase().includes(named.idPrefix) ||
+      String(b.name || '').toLowerCase().includes(named.idPrefix)
+    );
+    if (sameBrand.length === 1) {
+      return { bank: sameBrand[0], isNew: false, confidence: 'medium', reason: `Filename/header matches ${named.name}`, extracted };
+    }
+    return registerBankFromExtracted(named, `Filename/header matches ${named.name}`, 'medium');
+  }
+
+  const active = getActiveBank() || corporateBanks[0];
+  if (active) {
+    return { bank: active, isNew: false, confidence: 'low', reason: `Could not read a bank name or A/c from the file. Suggested: ${active.name} ${active.accNo}`, extracted };
+  }
+
   const defaultBank = {
     id: 'corp-bank-01',
     name: 'Primary Corporate Bank',
     type: 'Current A/c',
     accNo: '••••0001',
     fullAccNo: '000000000001',
-    ifsc: 'CORP0000001',
-    branch: 'Corporate Finance Branch',
+    ifsc: '',
+    branch: '',
     sheets: []
   };
   corporateBanks.push(defaultBank);
-  return { bank: defaultBank, isNew: true, reason: 'Created default corporate bank' };
+  return { bank: defaultBank, isNew: true, confidence: 'low', reason: 'Created default corporate bank', extracted };
 }
 
 function detectMonthFromCsvLines(lines) {
@@ -2209,7 +2721,7 @@ function detectMonthFromCsvLines(lines) {
       if (m > 12 && parseInt(dmy[1], 10) <= 12) {
         m = parseInt(dmy[1], 10);
       }
-      if (m >= 1 && m <= 12 && y >= 2020 && y <= 2035) {
+      if (m >= 1 && m <= 12 && y >= 2000 && y <= 2100) {
         const key = `${y}-${String(m).padStart(2, '0')}`;
         monthCounts[key] = (monthCounts[key] || 0) + 1;
         continue;
@@ -2221,7 +2733,7 @@ function detectMonthFromCsvLines(lines) {
     if (ymd) {
       const y = parseInt(ymd[1], 10);
       const m = parseInt(ymd[2], 10);
-      if (m >= 1 && m <= 12 && y >= 2020 && y <= 2035) {
+      if (m >= 1 && m <= 12 && y >= 2000 && y <= 2100) {
         const key = `${y}-${String(m).padStart(2, '0')}`;
         monthCounts[key] = (monthCounts[key] || 0) + 1;
         continue;
@@ -2235,7 +2747,7 @@ function detectMonthFromCsvLines(lines) {
       const m = monthAbbrs[monStr];
       let y = parseInt(dMmmY[2], 10);
       if (y < 100) y = 2000 + y;
-      if (m && y >= 2020 && y <= 2035) {
+      if (m && y >= 2000 && y <= 2100) {
         const key = `${y}-${String(m).padStart(2, '0')}`;
         monthCounts[key] = (monthCounts[key] || 0) + 1;
         continue;
@@ -2248,7 +2760,7 @@ function detectMonthFromCsvLines(lines) {
       const monStr = mmmDy[1].toLowerCase().slice(0, 3);
       const m = monthAbbrs[monStr];
       const y = parseInt(mmmDy[2], 10);
-      if (m && y >= 2020 && y <= 2035) {
+      if (m && y >= 2000 && y <= 2100) {
         const key = `${y}-${String(m).padStart(2, '0')}`;
         monthCounts[key] = (monthCounts[key] || 0) + 1;
       }
@@ -2308,7 +2820,7 @@ async function uploadRawStatementFile(fileName, csvContent) {
   return null;
 }
 
-async function processBankStatementCsv(csvText, fileName = '') {
+async function processBankStatementCsv(csvText, fileName = '', options = {}) {
   if (!csvText || !csvText.trim()) {
     showToast('The statement file appears to be completely empty.', 'amber');
     return;
@@ -2336,44 +2848,18 @@ async function processBankStatementCsv(csvText, fileName = '') {
     return;
   }
 
-  // 1. Detect Bank Account
-  const detectionResult = detectBankFromCsv(csvText, fileName);
+  const detectionResult = detectBankFromCsv(csvText, fileName, options);
   const bank = detectionResult.bank;
   if (!bank.sheets) bank.sheets = [];
 
-  // 2. Detect Statement Month & Year
-  const detectedMonth = detectMonthFromCsvLines(lines);
+  const existingCreditSet = new Set();
+  const existingDebitSet = new Set();
+  (bank.sheets || []).forEach(sheet => {
+    (sheet.records || []).forEach(r => existingCreditSet.add(`${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase()));
+    (sheet.debitRecords || []).forEach(r => existingDebitSet.add(`${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase()));
+  });
 
-  // 3. Locate or create monthly sheet for this bank
-  let targetSheet = bank.sheets.find(s => s.monthId === detectedMonth.monthId);
-  if (!targetSheet) {
-    targetSheet = {
-      monthId: detectedMonth.monthId,
-      label: detectedMonth.label,
-      fileName: fileName || `${bank.name.replace(/\s+/g, '_')}_${detectedMonth.monthName}_${detectedMonth.year}.csv`,
-      uploadedOn: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      creditsCount: 0,
-      debitsCount: 0,
-      records: [],
-      debitRecords: []
-    };
-    bank.sheets.unshift(targetSheet);
-  } else {
-    // Bring active sheet to front of list
-    targetSheet.fileName = fileName || targetSheet.fileName;
-    targetSheet.uploadedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  }
-
-  if (!targetSheet.records) targetSheet.records = [];
-  if (!targetSheet.debitRecords) targetSheet.debitRecords = [];
-
-  // 4. Build deduplication sets
-  const existingCreditSet = new Set(
-    targetSheet.records.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
-  );
-  const existingDebitSet = new Set(
-    targetSheet.debitRecords.map(r => `${r.date}|${r.amount}|${r.type}|${r.bankRef}`.toLowerCase())
-  );
+  const parsedTxns = [];
 
   // 5. Discover Column Headers with Scoring
   const delimiter = detectCsvDelimiter(csvText);
@@ -2422,9 +2908,11 @@ async function processBankStatementCsv(csvText, fileName = '') {
     const cols = parseCsvLine(line, delimiter);
     if (cols.length < 2) continue;
 
-    // Extract fields
-    const date = (dateCol >= 0 && cols[dateCol]) ? cols[dateCol].trim() : (cols[0] || '');
-    if (!isValidTransactionDate(date)) continue;
+    const dated = extractRowDateAndMonth(cols, dateCol);
+    if (!dated || !dated.monthId) continue;
+    const date = dated.date;
+    const rowMonthId = dated.monthId;
+    if (!isValidTransactionDate(date) && !rowMonthId) continue;
     const narration = (narrationCol >= 0 && cols[narrationCol]) ? cols[narrationCol].trim() : (cols[1] || 'Bank Transaction');
     const ref = (refCol >= 0 && cols[refCol]) ? cols[refCol].trim() : (cols[2] || `TXN-${Date.now()}-${i}`);
     
@@ -2452,16 +2940,20 @@ async function processBankStatementCsv(csvText, fileName = '') {
         } else {
           existingCreditSet.add(key);
           addedCredits++;
-          targetSheet.records.unshift({
-            id: `CR-IMP-${Date.now()}-${addedCredits}`,
-            date: date,
-            narration: narration,
-            payer: payer,
-            type: type,
-            bankRef: ref,
-            amount: crVal,
-            status: 'unmapped',
-            mapping: null
+          parsedTxns.push({
+            flow: 'credit',
+            monthId: rowMonthId,
+            record: {
+              id: `CR-IMP-${Date.now()}-${addedCredits}`,
+              date: date,
+              narration: narration,
+              payer: payer,
+              type: type,
+              bankRef: ref,
+              amount: crVal,
+              status: 'unmapped',
+              mapping: null
+            }
           });
         }
       }
@@ -2473,16 +2965,20 @@ async function processBankStatementCsv(csvText, fileName = '') {
         } else {
           existingDebitSet.add(key);
           addedDebits++;
-          targetSheet.debitRecords.unshift({
-            id: `DR-IMP-${Date.now()}-${addedDebits}`,
-            date: date,
-            narration: narration,
-            payer: payer || 'Vendor',
-            type: type,
-            bankRef: ref,
-            amount: drVal,
-            status: 'unmapped',
-            mapping: null
+          parsedTxns.push({
+            flow: 'debit',
+            monthId: rowMonthId,
+            record: {
+              id: `DR-IMP-${Date.now()}-${addedDebits}`,
+              date: date,
+              narration: narration,
+              payer: payer || 'Vendor',
+              type: type,
+              bankRef: ref,
+              amount: drVal,
+              status: 'unmapped',
+              mapping: null
+            }
           });
         }
       }
@@ -2526,16 +3022,20 @@ async function processBankStatementCsv(csvText, fileName = '') {
         } else {
           existingDebitSet.add(key);
           addedDebits++;
-          targetSheet.debitRecords.unshift({
-            id: `DR-IMP-${Date.now()}-${addedDebits}`,
-            date: date,
-            narration: narration,
-            payer: payer || 'Vendor',
-            type: type,
-            bankRef: ref,
-            amount: amt,
-            status: 'unmapped',
-            mapping: null
+          parsedTxns.push({
+            flow: 'debit',
+            monthId: rowMonthId,
+            record: {
+              id: `DR-IMP-${Date.now()}-${addedDebits}`,
+              date: date,
+              narration: narration,
+              payer: payer || 'Vendor',
+              type: type,
+              bankRef: ref,
+              amount: amt,
+              status: 'unmapped',
+              mapping: null
+            }
           });
         }
       } else {
@@ -2544,70 +3044,352 @@ async function processBankStatementCsv(csvText, fileName = '') {
         } else {
           existingCreditSet.add(key);
           addedCredits++;
-          targetSheet.records.unshift({
-            id: `CR-IMP-${Date.now()}-${addedCredits}`,
-            date: date,
-            narration: narration,
-            payer: payer,
-            type: type,
-            bankRef: ref,
-            amount: amt,
-            status: 'unmapped',
-            mapping: null
+          parsedTxns.push({
+            flow: 'credit',
+            monthId: rowMonthId,
+            record: {
+              id: `CR-IMP-${Date.now()}-${addedCredits}`,
+              date: date,
+              narration: narration,
+              payer: payer,
+              type: type,
+              bankRef: ref,
+              amount: amt,
+              status: 'unmapped',
+              mapping: null
+            }
           });
         }
       }
     }
   }
 
-  // 6. Update Counts
-  targetSheet.creditsCount = targetSheet.records.length;
-  targetSheet.debitsCount = targetSheet.debitRecords.length;
+  const datedTxns = parsedTxns.filter(txn => {
+    if (!txn.monthId && txn.record) txn.monthId = parseDateToMonthId(txn.record.date);
+    return !!txn.monthId;
+  });
+  skipped += parsedTxns.length - datedTxns.length;
 
-  // 7. Auto-switch Active Bank and Month View
+  if (datedTxns.length === 0) {
+    showToast('No valid dated transactions found in this statement.', 'amber');
+    return;
+  }
+
+  const monthsMap = {};
+  datedTxns.forEach(txn => {
+    if (!monthsMap[txn.monthId]) {
+      monthsMap[txn.monthId] = { monthId: txn.monthId, label: monthLabelFromId(txn.monthId), credits: 0, debits: 0, records: [], debitRecords: [] };
+    }
+    if (txn.flow === 'debit') {
+      monthsMap[txn.monthId].debits += 1;
+      monthsMap[txn.monthId].debitRecords.push(txn.record);
+    } else {
+      monthsMap[txn.monthId].credits += 1;
+      monthsMap[txn.monthId].records.push(txn.record);
+    }
+  });
+
+  const draft = {
+    fileName,
+    csvText,
+    bank,
+    detection: detectionResult,
+    months: Object.values(monthsMap).sort((a, b) => a.monthId.localeCompare(b.monthId)),
+    addedCredits,
+    addedDebits,
+    skipped
+  };
+
+  const approved = options.autoApprove ? true : await askUserToApproveStatement(draft);
+  if (!approved) {
+    showToast('Upload cancelled. Nothing was saved.', 'info');
+    return;
+  }
+
+  await commitStatementImport(draft);
+}
+
+let pendingApproveResolver = null;
+let pendingUploadDraft = null;
+let pendingDeletedSheets = [];
+let persistQueued = false;
+const DELETED_SHEETS_KEY = 'ifimed_deleted_statement_sheets';
+
+function readDeletedSheetTombstones() {
+  try {
+    const raw = localStorage.getItem(DELETED_SHEETS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function rememberDeletedSheet(bankId, monthId) {
+  if (!bankId || !monthId) return;
+  const list = readDeletedSheetTombstones();
+  const key = `${bankId}::${monthId}`;
+  if (list.some(d => `${d.bankId}::${d.monthId}` === key)) return;
+  list.push({ bankId, monthId, at: Date.now() });
+  try { localStorage.setItem(DELETED_SHEETS_KEY, JSON.stringify(list)); } catch (e) {}
+}
+
+function forgetDeletedSheet(bankId, monthId) {
+  const next = readDeletedSheetTombstones().filter(d => !(d.bankId === bankId && d.monthId === monthId));
+  try { localStorage.setItem(DELETED_SHEETS_KEY, JSON.stringify(next)); } catch (e) {}
+}
+
+function stripTombstonedSheets(banks) {
+  const tombs = readDeletedSheetTombstones();
+  if (!tombs.length || !Array.isArray(banks)) return banks;
+  const keys = new Set(tombs.map(d => `${d.bankId}::${d.monthId}`));
+  return banks.map(b => Object.assign({}, b, {
+    sheets: (b.sheets || []).filter(s => s && !keys.has(`${b.id}::${s.monthId}`))
+  }));
+}
+
+function askUserToApproveStatement(draft) {
+  pendingUploadDraft = draft;
+  return new Promise((resolve) => {
+    pendingApproveResolver = resolve;
+    const modal = document.getElementById('approveUploadModal');
+    const bankSelect = document.getElementById('approveBankSelect');
+    const reasonEl = document.getElementById('approveDetectReason');
+    const fileMeta = document.getElementById('approveFileMeta');
+    const monthBox = document.getElementById('approveMonthSummary');
+    const totalsEl = document.getElementById('approveTotals');
+    if (bankSelect) {
+      bankSelect.innerHTML = corporateBanks.map(b =>
+        `<option value="${escapeHtml(b.id)}" ${b.id === draft.bank.id ? 'selected' : ''}>${escapeHtml(b.name)} ${escapeHtml(b.accNo || '')}</option>`
+      ).join('');
+    }
+    if (reasonEl) {
+      reasonEl.textContent = draft.detection.reason || '';
+      reasonEl.classList.toggle('is-low', draft.detection.confidence === 'low');
+    }
+    const extracted = (draft.detection && draft.detection.extracted) || {};
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value || '—';
+    };
+    setText('approveExtractedName', extracted.name || draft.bank.name);
+    setText('approveExtractedAcc', extracted.fullAccNo || 'Not printed on this statement');
+    setText('approveExtractedIfsc', extracted.ifsc || 'Not printed on this statement');
+    setText('approveExtractedBranch', extracted.branch || extracted.holder || 'Not printed on this statement');
+    if (fileMeta) {
+      fileMeta.textContent = `File: ${draft.fileName || 'statement'} · ${draft.months.length} month${draft.months.length === 1 ? '' : 's'} detected from transaction dates`;
+    }
+    if (monthBox) {
+      monthBox.innerHTML = draft.months.map(m =>
+        `<div class="approve-month-row" role="listitem"><strong>${escapeHtml(m.label)}</strong><span>${m.credits} credits · ${m.debits} debits</span></div>`
+      ).join('');
+    }
+    if (totalsEl) {
+      totalsEl.textContent = `${draft.addedCredits} credits and ${draft.addedDebits} debits will be saved (${draft.skipped} duplicates skipped).`;
+    }
+    if (modal) modal.style.display = 'flex';
+  });
+}
+
+function closeApproveUploadModal(approved) {
+  const modal = document.getElementById('approveUploadModal');
+  if (modal) modal.style.display = 'none';
+  if (pendingApproveResolver) {
+    const resolve = pendingApproveResolver;
+    pendingApproveResolver = null;
+    resolve(!!approved);
+  }
+}
+
+function getOrCreateBankSheet(bank, monthId, fileName, sourceHeader) {
+  if (!bank.sheets) bank.sheets = [];
+  let sheet = bank.sheets.find(s => s.monthId === monthId);
+  const uploadedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (!sheet) {
+    sheet = {
+      monthId,
+      label: monthLabelFromId(monthId),
+      fileName: fileName || `${(bank.name || 'Bank').replace(/\s+/g, '_')}_${monthId}.csv`,
+      uploadedOn,
+      sourceHeader: sourceHeader || '',
+      creditsCount: 0,
+      debitsCount: 0,
+      records: [],
+      debitRecords: []
+    };
+    bank.sheets.unshift(sheet);
+  } else {
+    sheet.fileName = fileName || sheet.fileName;
+    sheet.uploadedOn = uploadedOn;
+    if (sourceHeader) sheet.sourceHeader = sourceHeader;
+    if (!sheet.records) sheet.records = [];
+    if (!sheet.debitRecords) sheet.debitRecords = [];
+  }
+  return sheet;
+}
+
+async function commitStatementImport(draft) {
+  const modal = document.getElementById('approveUploadModal');
+  const modalOpen = modal && modal.style.display === 'flex';
+  const bankSelect = document.getElementById('approveBankSelect');
+  const chosenId = (modalOpen && bankSelect && bankSelect.value) ? bankSelect.value : draft.bank.id;
+  let bank = corporateBanks.find(b => b.id === chosenId) || draft.bank;
+  if (!corporateBanks.some(b => b.id === bank.id)) {
+    corporateBanks.push(bank);
+  }
+  if (!bank.sheets) bank.sheets = [];
+  const extracted = draft.detection && draft.detection.extracted;
+  if (extracted) {
+    const sameAccount = !extracted.fullAccNo || accountsEqual(bank.fullAccNo, extracted.fullAccNo) || !digitsOnly(bank.fullAccNo);
+    if (sameAccount && extracted.fullAccNo && extracted.fullAccNo.length >= 6) {
+      bank.fullAccNo = extracted.fullAccNo;
+      bank.accNo = `••••${extracted.fullAccNo.slice(-4)}`;
+    }
+    if (sameAccount && extracted.ifsc) bank.ifsc = extracted.ifsc;
+    if (sameAccount && extracted.name) bank.name = extracted.name;
+    if (sameAccount && (extracted.branch || extracted.holder)) bank.branch = extracted.branch || extracted.holder;
+  }
+
+  const sourceHeader = statementSourceHeader(draft.csvText);
+  draft.months.forEach(month => {
+    forgetDeletedSheet(bank.id, month.monthId);
+    const sheet = getOrCreateBankSheet(bank, month.monthId, draft.fileName, sourceHeader);
+    sheet.records = (month.records || []).concat(sheet.records || []);
+    sheet.debitRecords = (month.debitRecords || []).concat(sheet.debitRecords || []);
+    sheet.creditsCount = sheet.records.length;
+    sheet.debitsCount = sheet.debitRecords.length;
+  });
+
   selectedBankId = bank.id;
-  selectedMonthId = targetSheet.monthId;
+  selectedMonthId = draft.months[draft.months.length - 1].monthId;
 
-  // Determine desk mode and visually switch tabs
-  if (addedCredits > 0 && addedDebits > 0) {
+  if (draft.addedCredits > 0 && draft.addedDebits > 0) {
     switchMappingMode('all', { silent: true, autoPersist: false });
-  } else if (addedDebits > 0 && addedCredits === 0) {
+  } else if (draft.addedDebits > 0 && draft.addedCredits === 0) {
     switchMappingMode('debit', { silent: true, autoPersist: false });
   } else {
     switchMappingMode('credit', { silent: true, autoPersist: false });
   }
 
-  // 8. Auto-match open transactions with statement data
   autoMatchAllStatementData(false);
 
-  // 9. Desk Audit Activity
-  const totalAdded = addedCredits + addedDebits;
+  const monthLabels = draft.months.map(m => m.label).join(', ');
   recentActivities.unshift({
-    text: `Imported statement (${addedCredits} credits, ${addedDebits} debits)`,
-    meta: `${bank.name} ${bank.accNo} · ${targetSheet.label} · Synced with Supabase DB`
+    text: `Imported statement (${draft.addedCredits} credits, ${draft.addedDebits} debits)`,
+    meta: `${bank.name} ${bank.accNo} · ${monthLabels}`
   });
 
-  // 10. Re-render entire UI immediately
+  renderAll(false);
+  await persistToSupabase();
+  if (draft.fileName) {
+    uploadRawStatementFile(draft.fileName, draft.csvText);
+  }
+
+  const totalAdded = draft.addedCredits + draft.addedDebits;
+  showToast(
+    `Saved ${totalAdded} transactions to ${bank.name} (${bank.accNo}) across ${draft.months.length} month${draft.months.length === 1 ? '' : 's'}: ${monthLabels}.`,
+    totalAdded > 0 ? 'success' : 'amber'
+  );
+}
+
+function collectDeletionPayload() {
+  const seen = new Set();
+  const all = [];
+  pendingDeletedSheets.concat(readDeletedSheetTombstones()).forEach(d => {
+    if (!d || !d.bankId || !d.monthId) return;
+    const key = `${d.bankId}::${d.monthId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    all.push(d);
+  });
+  return all;
+}
+
+function banksWithoutDeletedSheets(banks, deletions) {
+  const keys = new Set((deletions || []).map(d => `${d.bankId}::${d.monthId}`));
+  if (!keys.size) return banks;
+  return (banks || []).map(b => Object.assign({}, b, {
+    sheets: (b.sheets || []).filter(s => s && !keys.has(`${b.id}::${s.monthId}`))
+  }));
+}
+
+async function deleteSheetViaSupabaseClient(del) {
+  const client = getSupabaseClient();
+  if (!client || !del || !del.bankId || !del.monthId) return false;
+  try {
+    await client.from('bank_transactions').delete().eq('bank_id', del.bankId).eq('month_id', del.monthId);
+    if (Array.isArray(del.txnIds) && del.txnIds.length > 0) {
+      for (let i = 0; i < del.txnIds.length; i += 80) {
+        await client.from('bank_transactions').delete().in('id', del.txnIds.slice(i, i + 80));
+      }
+    }
+    const { data: bank } = await client.from('corporate_banks').select('sheets').eq('id', del.bankId).maybeSingle();
+    if (bank) {
+      const sheets = (Array.isArray(bank.sheets) ? bank.sheets : []).filter(s => String(s.monthId) !== String(del.monthId));
+      const { error } = await client.from('corporate_banks').update({
+        sheets,
+        updated_at: new Date().toISOString()
+      }).eq('id', del.bankId);
+      if (error) throw error;
+    }
+    if (del.fileName) {
+      const safeName = String(del.fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+      await client.storage.from('reconciliation-data').remove([`statements/${safeName}`]);
+    }
+    return true;
+  } catch (err) {
+    console.warn('Client sheet delete failed:', err);
+    return false;
+  }
+}
+
+async function deleteStatementSheetFromBackend(del) {
+  try {
+    const res = await fetch('/api/supabase/delete-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(del)
+    });
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
+      const data = await res.json();
+      if (data && data.success) return true;
+    }
+  } catch (err) {}
+  return deleteSheetViaSupabaseClient(del);
+}
+
+async function deleteStatementSheet(bankId, monthId) {
+  const bank = corporateBanks.find(b => b.id === bankId);
+  if (!bank || !Array.isArray(bank.sheets)) return;
+  const sheet = bank.sheets.find(s => s.monthId === monthId);
+  const label = sheet ? sheet.label : monthId;
+  const fileName = sheet ? sheet.fileName : '';
+  const txnIds = [
+    ...((sheet && sheet.records) || []).map(r => r.id).filter(Boolean),
+    ...((sheet && sheet.debitRecords) || []).map(r => r.id).filter(Boolean)
+  ];
+  bank.sheets = bank.sheets.filter(s => s.monthId !== monthId);
+  const deletion = { bankId, monthId, txnIds, fileName };
+  pendingDeletedSheets.push(deletion);
+  rememberDeletedSheet(bankId, monthId);
+  if (selectedMonthId === monthId) {
+    selectedMonthId = bank.sheets[0] ? bank.sheets[0].monthId : '';
+  }
+  recentActivities.unshift({
+    text: `Removed statement file (${label})`,
+    meta: `${bank.name} ${bank.accNo}`
+  });
   renderAll(false);
 
-  // 11. Backend Database Persistence directly into Supabase PostgreSQL
+  const dbDeleted = await deleteStatementSheetFromBackend(deletion);
   await persistToSupabase();
-
-  // 12. Archive raw statement file in Supabase Cloud Storage
-  if (fileName) {
-    uploadRawStatementFile(fileName, csvText);
-  }
-
-  // 13. Feedback Toast
-  let toastMsg = '';
-  if (addedCredits > 0 && addedDebits > 0) {
-    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedCredits} Credits & ${addedDebits} Debits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
-  } else if (addedDebits > 0) {
-    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedDebits} Debits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
-  } else {
-    toastMsg = `✔ Auto-detected ${bank.name} (${bank.accNo}) · ${targetSheet.label} · Detected ${addedCredits} Credits (${totalAdded} imported, ${skipped} skipped) · Uploaded to Frontend & Supabase Cloud DB!`;
-  }
-  showToast(toastMsg, totalAdded > 0 ? 'success' : 'amber');
+  showToast(
+    dbDeleted
+      ? `Deleted ${label} from ${bank.name} and the database.`
+      : `Removed ${label} locally. Database delete will retry on the next sync.`,
+    dbDeleted ? 'success' : 'amber'
+  );
 }
 
 // =============================================================================
@@ -3049,14 +3831,22 @@ function renderCommandPaletteResults(term) {
 // 12. Dynamic 6-Month Trend Bar Chart (Mode-Aware Credits & Debits)
 // =============================================================================
 
-const TREND_MONTHS = [
-  { monthId: '2026-04', label: 'April 2026', shortName: 'Apr' },
-  { monthId: '2026-05', label: 'May 2026', shortName: 'May' },
-  { monthId: '2026-06', label: 'June 2026', shortName: 'Jun' },
-  { monthId: '2026-07', label: 'July 2026', shortName: 'Jul' },
-  { monthId: '2026-08', label: 'August 2026', shortName: 'Aug' },
-  { monthId: '2026-09', label: 'September 2026', shortName: 'Sep' }
-];
+function getTrendMonths() {
+  const ids = new Set();
+  corporateBanks.forEach(b => {
+    (b.sheets || []).forEach(s => { if (s && s.monthId) ids.add(s.monthId); });
+  });
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    ids.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return [...ids].sort().slice(-6).map(id => {
+    const [y, m] = id.split('-');
+    const name = MONTH_NAMES_LONG[Math.max(0, parseInt(m, 10) - 1)] || 'Month';
+    return { monthId: id, label: `${name} ${y}`, shortName: name.slice(0, 3) };
+  });
+}
 
 function renderCreditTrendChart() {
   if (!miniBarChart) return;
@@ -3067,7 +3857,7 @@ function renderCreditTrendChart() {
   const isAll = activeMappingMode === 'all';
 
   // Compute live monthly volumes for active bank and active mode (no synthetic dummy values)
-  const data = TREND_MONTHS.map(m => {
+  const data = getTrendMonths().map(m => {
     const sheet = (bank && bank.sheets) ? bank.sheets.find(s => s.monthId === m.monthId) : null;
     let total = 0;
     let count = 0;
@@ -3166,37 +3956,161 @@ function updateSupabaseSyncBadge(status, text) {
   }
 }
 
+function buildSupabaseBankRows() {
+  return corporateBanks.map(b => ({
+    id: b.id,
+    name: b.name || 'Bank',
+    type: b.type || 'Current A/c',
+    acc_no: b.accNo || '',
+    full_acc_no: b.fullAccNo || null,
+    ifsc: b.ifsc || null,
+    branch: b.branch || null,
+    sheets: b.sheets || [],
+    updated_at: new Date().toISOString()
+  }));
+}
+
+function buildSupabaseTxnRows() {
+  const txnRows = [];
+  corporateBanks.forEach(b => {
+    (b.sheets || []).forEach(s => {
+      (s.records || []).forEach(r => {
+        txnRows.push({
+          id: r.id,
+          bank_id: b.id,
+          month_id: s.monthId,
+          transaction_date: r.date || '',
+          narration: r.narration || 'Bank Inflow',
+          payer: r.payer || null,
+          bank_ref: r.bankRef || r.id,
+          type: r.type || 'TRANSFER',
+          transaction_type: 'credit',
+          amount: parseFloat(r.amount) || 0,
+          status: r.status || 'unmapped',
+          mapping: r.mapping || null
+        });
+      });
+      (s.debitRecords || []).forEach(r => {
+        txnRows.push({
+          id: r.id,
+          bank_id: b.id,
+          month_id: s.monthId,
+          transaction_date: r.date || '',
+          narration: r.narration || 'Bank Outflow',
+          payer: r.payer || null,
+          bank_ref: r.bankRef || r.id,
+          type: r.type || 'TRANSFER',
+          transaction_type: 'debit',
+          amount: parseFloat(r.amount) || 0,
+          status: r.status || 'unmapped',
+          mapping: r.mapping || null
+        });
+      });
+    });
+  });
+  return txnRows;
+}
+
+async function persistViaSupabaseClient(deletions = pendingDeletedSheets) {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  for (const del of deletions) {
+    await deleteSheetViaSupabaseClient(del);
+  }
+
+  const { error: bankErr } = await client.from('corporate_banks').upsert(buildSupabaseBankRows(), { onConflict: 'id' });
+  if (bankErr) throw bankErr;
+
+  const txnRows = buildSupabaseTxnRows();
+  if (txnRows.length > 0) {
+    const { error: txnErr } = await client.from('bank_transactions').upsert(txnRows, { onConflict: 'id' });
+    if (txnErr) throw txnErr;
+  }
+
+  if (appInvoices.length > 0) {
+    await client.from('invoices').upsert(appInvoices.map(inv => ({
+      id: inv.id || inv.invoiceNo,
+      invoice_no: inv.invoiceNo,
+      guest_name: inv.guestName || inv.customer || 'Customer',
+      amount: parseFloat(inv.amount) || 0,
+      date: inv.date || '',
+      status: inv.status || 'Unpaid',
+      settled_amount: parseFloat(inv.settledAmount) || 0
+    })), { onConflict: 'id' });
+  }
+  if (appVendorBills.length > 0) {
+    await client.from('vendor_bills').upsert(appVendorBills.map(b => ({
+      id: b.id || b.billNo,
+      bill_no: b.billNo,
+      vendor_name: b.vendorName || b.vendor || 'Vendor',
+      amount: parseFloat(b.amount) || 0,
+      date: b.date || '',
+      status: b.status || 'Unpaid',
+      settled_amount: parseFloat(b.settledAmount) || 0
+    })), { onConflict: 'id' });
+  }
+
+  return true;
+}
+
 async function persistToSupabase() {
-  if (isSupabaseSyncing) return;
+  if (isSupabaseSyncing) {
+    persistQueued = true;
+    const started = Date.now();
+    while (isSupabaseSyncing && Date.now() - started < 20000) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    if (isSupabaseSyncing) return false;
+  }
   isSupabaseSyncing = true;
   updateSupabaseSyncBadge('syncing', 'Syncing to Supabase...');
   try {
-    const payload = {
-      banks: corporateBanks,
-      invoices: appInvoices,
-      bills: appVendorBills,
-      activities: recentActivities,
-      updatedAt: new Date().toISOString()
-    };
+    do {
+      persistQueued = false;
+      const deletions = collectDeletionPayload();
+      const payload = {
+        banks: banksWithoutDeletedSheets(corporateBanks, deletions),
+        invoices: appInvoices,
+        bills: appVendorBills,
+        activities: recentActivities,
+        deletedSheets: deletions,
+        updatedAt: new Date().toISOString()
+      };
 
-    const res = await fetch('/api/supabase/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+      let saved = false;
+      try {
+        const res = await fetch('/api/supabase/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        saved = res.ok;
+      } catch (e) {
+        saved = false;
+      }
 
-    if (res.ok) {
-      lastSupabaseSyncTime = new Date();
-      const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
-    } else {
-      updateSupabaseSyncBadge('error', 'Supabase Sync Error');
-    }
+      if (!saved) {
+        saved = await persistViaSupabaseClient(deletions);
+      }
+
+      if (saved) {
+        pendingDeletedSheets = pendingDeletedSheets.filter(d =>
+          !deletions.some(x => x.bankId === d.bankId && x.monthId === d.monthId)
+        );
+        lastSupabaseSyncTime = new Date();
+        const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
+      } else {
+        updateSupabaseSyncBadge('error', 'Supabase Sync Error');
+      }
+    } while (persistQueued);
   } catch (err) {
     console.warn('Supabase persist error:', err);
     updateSupabaseSyncBadge('error', 'Supabase Offline');
   } finally {
     isSupabaseSyncing = false;
+    if (persistQueued) persistToSupabase();
   }
 }
 
@@ -3208,67 +4122,134 @@ function debouncedPersistToSupabase() {
   }, 1000);
 }
 
+async function applyLoadedSupabaseState(state) {
+  if (!state) return false;
+  if (Array.isArray(state.banks) && state.banks.length > 0) {
+    corporateBanks = stripTombstonedSheets(state.banks.map(b => Object.assign({}, b, {
+      accNo: sanitizeMaskedAccNo(b.accNo || b.acc_no, b.fullAccNo || b.full_acc_no, b.id),
+      sheets: Array.isArray(b.sheets) ? b.sheets : []
+    })));
+  }
+  if (Array.isArray(state.invoices)) appInvoices = state.invoices;
+  if (Array.isArray(state.bills)) appVendorBills = state.bills;
+  if (Array.isArray(state.activities)) recentActivities = state.activities;
+  return true;
+}
+
+async function loadViaSupabaseClient() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data: banks, error } = await client.from('corporate_banks').select('*').order('id');
+  if (error || !banks) return null;
+  const { data: txns } = await client.from('bank_transactions').select('*');
+  const formatted = banks.map(b => ({
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    accNo: sanitizeMaskedAccNo(b.acc_no, b.full_acc_no, b.id),
+    fullAccNo: b.full_acc_no,
+    ifsc: b.ifsc,
+    branch: b.branch,
+    sheets: Array.isArray(b.sheets) ? b.sheets : []
+  }));
+  if (Array.isArray(txns) && txns.length) {
+    txns.forEach(t => {
+      const bank = formatted.find(b => b.id === t.bank_id);
+      if (!bank) return;
+      const monthId = t.month_id || parseDateToMonthId(t.transaction_date) || 'unknown';
+      let sheet = bank.sheets.find(s => s.monthId === monthId);
+      if (!sheet) return;
+      if (!sheet.records) sheet.records = [];
+      if (!sheet.debitRecords) sheet.debitRecords = [];
+      const row = {
+        id: t.id,
+        date: t.transaction_date,
+        narration: t.narration,
+        payer: t.payer,
+        type: t.type || 'TRANSFER',
+        bankRef: t.bank_ref,
+        amount: parseFloat(t.amount) || 0,
+        status: t.status || 'unmapped',
+        mapping: t.mapping || null
+      };
+      const bucket = t.transaction_type === 'debit' ? sheet.debitRecords : sheet.records;
+      if (!bucket.some(r => String(r.id) === String(row.id))) bucket.push(row);
+      sheet.creditsCount = sheet.records.length;
+      sheet.debitsCount = sheet.debitRecords.length;
+    });
+  }
+  const { data: invoices } = await client.from('invoices').select('*');
+  const { data: bills } = await client.from('vendor_bills').select('*');
+  return {
+    banks: formatted,
+    invoices: (invoices || []).map(inv => ({
+      id: inv.id,
+      invoiceNo: inv.invoice_no,
+      guestName: inv.guest_name,
+      amount: parseFloat(inv.amount) || 0,
+      date: inv.date,
+      status: inv.status,
+      settledAmount: parseFloat(inv.settled_amount) || 0
+    })),
+    bills: (bills || []).map(b => ({
+      id: b.id,
+      billNo: b.bill_no,
+      vendorName: b.vendor_name,
+      amount: parseFloat(b.amount) || 0,
+      date: b.date,
+      status: b.status,
+      settledAmount: parseFloat(b.settled_amount) || 0
+    })),
+    activities: []
+  };
+}
+
 async function loadFromSupabase(showToastNotification = false) {
   updateSupabaseSyncBadge('syncing', 'Connecting Supabase...');
   try {
-    const res = await fetch('/api/supabase/data');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        const state = json.data;
-        if (Array.isArray(state.banks) && state.banks.length > 0) {
-          corporateBanks = state.banks.map(b => Object.assign({}, b, {
-            accNo: sanitizeMaskedAccNo(b.accNo || b.acc_no, b.fullAccNo || b.full_acc_no, b.id),
-            sheets: Array.isArray(b.sheets) ? b.sheets : []
-          }));
-        }
-        if (Array.isArray(state.invoices)) {
-          appInvoices = state.invoices;
-        }
-        if (Array.isArray(state.bills)) {
-          appVendorBills = state.bills;
-        }
-        if (Array.isArray(state.activities)) {
-          recentActivities = state.activities;
-        }
-
-        // Smart Initial Bank and Sheet Selection:
-        // If current bank has no records, focus on the bank that HAS records!
-        const currentActive = corporateBanks.find(b => b.id === selectedBankId);
-        const currentHasRecords = currentActive && Array.isArray(currentActive.sheets) && currentActive.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0));
-
-        if (!currentHasRecords) {
-          const bankWithRecords = corporateBanks.find(b => Array.isArray(b.sheets) && b.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)));
-          if (bankWithRecords) {
-            selectedBankId = bankWithRecords.id;
-          }
-        }
-
-        // Auto-select sheet with records and set active mapping mode
-        const activeBank = getActiveBank();
-        if (activeBank && Array.isArray(activeBank.sheets) && activeBank.sheets.length > 0) {
-          const sheetWithRecords = activeBank.sheets.find(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)) || activeBank.sheets[0];
-          selectedMonthId = sheetWithRecords.monthId;
-
-          const crCount = (sheetWithRecords.records || []).length;
-          const drCount = (sheetWithRecords.debitRecords || []).length;
-          if (drCount > 0 && crCount === 0) {
-            switchMappingMode('debit', { silent: true, autoPersist: false });
-          } else {
-            switchMappingMode('credit', { silent: true, autoPersist: false });
-          }
-        }
-
-        isInitialSupabaseLoadDone = true;
-        renderAll(false);
-        lastSupabaseSyncTime = new Date();
-        const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
-        if (showToastNotification) {
-          showToast('Workspace data synchronized with Supabase Cloud Database');
-        }
-        return true;
+    let state = null;
+    try {
+      const res = await fetch('/api/supabase/data');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) state = json.data;
       }
+    } catch (e) {}
+    if (!state) {
+      state = await loadViaSupabaseClient();
+    }
+    if (state) {
+      await applyLoadedSupabaseState(state);
+
+      const currentActive = corporateBanks.find(b => b.id === selectedBankId);
+      const currentHasRecords = currentActive && Array.isArray(currentActive.sheets) && currentActive.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0));
+      if (!currentHasRecords) {
+        const bankWithRecords = corporateBanks.find(b => Array.isArray(b.sheets) && b.sheets.some(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)));
+        if (bankWithRecords) selectedBankId = bankWithRecords.id;
+      }
+
+      const activeBank = getActiveBank();
+      if (activeBank && Array.isArray(activeBank.sheets) && activeBank.sheets.length > 0) {
+        const sheetWithRecords = activeBank.sheets.find(s => (s.records && s.records.length > 0) || (s.debitRecords && s.debitRecords.length > 0)) || activeBank.sheets[0];
+        selectedMonthId = sheetWithRecords.monthId;
+        const crCount = (sheetWithRecords.records || []).length;
+        const drCount = (sheetWithRecords.debitRecords || []).length;
+        if (drCount > 0 && crCount === 0) {
+          switchMappingMode('debit', { silent: true, autoPersist: false });
+        } else {
+          switchMappingMode('credit', { silent: true, autoPersist: false });
+        }
+      }
+
+      isInitialSupabaseLoadDone = true;
+      renderAll(false);
+      lastSupabaseSyncTime = new Date();
+      const timeStr = lastSupabaseSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
+      if (showToastNotification) {
+        showToast('Workspace data synchronized with Supabase Cloud Database');
+      }
+      return true;
     }
     isInitialSupabaseLoadDone = true;
     updateSupabaseSyncBadge('synced', 'Supabase Connected');
@@ -3302,6 +4283,19 @@ function renderAll(autoPersist = true) {
 
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Sidebar Nav
+  const confirmApproveUploadBtn = document.getElementById('confirmApproveUploadBtn');
+  const cancelApproveUploadBtn = document.getElementById('cancelApproveUploadBtn');
+  const closeApproveUploadBtn = document.getElementById('closeApproveUploadBtn');
+  if (confirmApproveUploadBtn) {
+    confirmApproveUploadBtn.addEventListener('click', () => closeApproveUploadModal(true));
+  }
+  if (cancelApproveUploadBtn) {
+    cancelApproveUploadBtn.addEventListener('click', () => closeApproveUploadModal(false));
+  }
+  if (closeApproveUploadBtn) {
+    closeApproveUploadBtn.addEventListener('click', () => closeApproveUploadModal(false));
+  }
+
   if (navDashboard) navDashboard.addEventListener('click', () => switchView('dashboard'));
   if (navBankStatements) navBankStatements.addEventListener('click', () => switchView('bank-statements'));
   const breadcrumbDashboard = document.getElementById('breadcrumbDashboard');
@@ -3367,16 +4361,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (autoDetectBanksBtn) {
-    autoDetectBanksBtn.addEventListener('click', (e) => {
+    autoDetectBanksBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      autoDetectBankAccounts(true);
+      autoDetectBanksBtn.disabled = true;
+      try { await autoDetectBankAccounts(true); }
+      finally { autoDetectBanksBtn.disabled = false; }
     });
   }
 
   if (detectStatementsBtn) {
-    detectStatementsBtn.addEventListener('click', (e) => {
+    detectStatementsBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      autoDetectBankAccounts(true);
+      detectStatementsBtn.disabled = true;
+      try { await autoDetectBankAccounts(true); }
+      finally { detectStatementsBtn.disabled = false; }
     });
   }
 
@@ -3469,9 +4467,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
         showToast(`Reading statement: ${file.name}...`, 'info');
-        readStatementFile(file, async (content, fileName) => {
+        readStatementFile(file, async (content, fileName, meta) => {
           try {
-            await processBankStatementCsv(content, fileName);
+            await processBankStatementCsv(content, fileName, meta);
           } catch (err) {
             console.error('Error processing bank statement:', err);
             showToast(`Error processing statement: ${err.message}`, 'amber');
@@ -3486,9 +4484,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (bankCsvInput.files && bankCsvInput.files.length > 0) {
         const file = bankCsvInput.files[0];
         showToast(`Reading statement: ${file.name}...`, 'info');
-        readStatementFile(file, async (content, fileName) => {
+        readStatementFile(file, async (content, fileName, meta) => {
           try {
-            await processBankStatementCsv(content, fileName);
+            await processBankStatementCsv(content, fileName, meta);
           } catch (err) {
             console.error('Error processing bank statement:', err);
             showToast(`Error processing statement: ${err.message}`, 'amber');
@@ -3893,7 +4891,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const autoMatchAllBtn = document.getElementById('autoMatchAllBtn');
   if (autoMatchAllBtn) {
     autoMatchAllBtn.addEventListener('click', () => {
-      autoMatchAllStatementData(true);
+      autoMatchAllBtn.disabled = true;
+      try { autoMatchAllStatementData(true); }
+      finally { autoMatchAllBtn.disabled = false; }
     });
   }
 
