@@ -1798,6 +1798,27 @@ function findAutoMatchDoc(row, catalog, used, isDebit) {
   return null;
 }
 
+function createStatementDoc(row, isDebit, used) {
+  const party = row.payer || extractPartyFromNarration(row.narration) || (isDebit ? 'Vendor' : 'Customer');
+  const safeParty = String(party).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'STMT';
+  const amt = String(Math.round(Math.abs(Number(row.amount) || 0)));
+  const datePart = String(row.date || '').replace(/\D/g, '').slice(-6) || String(Date.now()).slice(-6);
+  const prefix = isDebit ? 'BILL' : 'INV';
+  let code = `${prefix}-${safeParty}-${datePart}-${amt}`;
+  let n = 1;
+  const taken = (value) => {
+    const key = String(value).toLowerCase();
+    if (used && used.has(key)) return true;
+    return isDebit
+      ? appVendorBills.some(b => String(b.billNo || '').toLowerCase() === key)
+      : appInvoices.some(i => String(i.invoiceNo || '').toLowerCase() === key);
+  };
+  while (taken(code)) {
+    code = `${prefix}-${safeParty}-${datePart}-${amt}-${n++}`;
+  }
+  return ensureCatalogDoc(code, row, isDebit);
+}
+
 function applyAutoMapping(row, doc, isDebit, mappedBy) {
   const docNo = isDebit ? (doc.billNo || doc.invoiceNo) : (doc.invoiceNo || doc.billNo);
   const party = isDebit ? (doc.vendorName || doc.guestName) : (doc.guestName || doc.vendorName);
@@ -1817,15 +1838,16 @@ function applyAutoMapping(row, doc, isDebit, mappedBy) {
 }
 
 function autoMatchAllStatementData(interactive = true) {
-  const bank = getActiveBank();
-  const sheets = (bank && Array.isArray(bank.sheets)) ? bank.sheets : [];
+  const banks = (corporateBanks || []).filter(b => b && Array.isArray(b.sheets) && b.sheets.length);
   const openRows = [];
-  sheets.forEach(sheet => {
-    (sheet.records || []).forEach(r => {
-      if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: false });
-    });
-    (sheet.debitRecords || []).forEach(r => {
-      if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: true });
+  banks.forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      (sheet.records || []).forEach(r => {
+        if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: false });
+      });
+      (sheet.debitRecords || []).forEach(r => {
+        if (r && r.status !== 'mapped') openRows.push({ row: r, isDebit: true });
+      });
     });
   });
 
@@ -1840,8 +1862,10 @@ function autoMatchAllStatementData(interactive = true) {
 
   openRows.forEach(({ row, isDebit }) => {
     const catalog = isDebit ? appVendorBills : appInvoices;
-    const found = findAutoMatchDoc(row, catalog, used, isDebit);
-    if (!found) return;
+    const found = findAutoMatchDoc(row, catalog, used, isDebit) || {
+      doc: createStatementDoc(row, isDebit, used),
+      reason: 'System (Auto-Matched from Statement)'
+    };
     const key = applyAutoMapping(row, found.doc, isDebit, found.reason);
     if (key) used.add(key);
     if (isDebit) matchedDebits++;
@@ -1849,15 +1873,14 @@ function autoMatchAllStatementData(interactive = true) {
   });
 
   const totalMatched = matchedCredits + matchedDebits;
-  renderAll();
+  renderAll(false);
+  persistToSupabase();
 
   if (interactive) {
     if (totalMatched > 0) {
-      showToast(`Auto-matched ${totalMatched} open transaction${totalMatched === 1 ? '' : 's'} (${matchedCredits} credit${matchedCredits === 1 ? '' : 's'}, ${matchedDebits} debit${matchedDebits === 1 ? '' : 's'}).`);
-    } else if (appInvoices.length === 0 && appVendorBills.length === 0) {
-      showToast('No invoice or bill numbers on these statements, and the catalogs are empty. Add invoices/bills first.', 'amber');
+      showToast(`Auto-matched all ${totalMatched} open transaction${totalMatched === 1 ? '' : 's'} (${matchedCredits} credit${matchedCredits === 1 ? '' : 's'}, ${matchedDebits} debit${matchedDebits === 1 ? '' : 's'}).`);
     } else {
-      showToast('No unique invoice or bill match for the open transactions.', 'amber');
+      showToast('No open transactions to auto-match on this account.', 'amber');
     }
   }
   return totalMatched;
@@ -3950,11 +3973,12 @@ function buildSupabaseBankRows() {
   }));
 }
 
-function buildSupabaseTxnRows() {
+function buildSupabaseTxnRowsFromBanks(banks) {
   const txnRows = [];
-  corporateBanks.forEach(b => {
+  (banks || []).forEach(b => {
     (b.sheets || []).forEach(s => {
       (s.records || []).forEach(r => {
+        if (!r || !r.id) return;
         txnRows.push({
           id: r.id,
           bank_id: b.id,
@@ -3971,6 +3995,7 @@ function buildSupabaseTxnRows() {
         });
       });
       (s.debitRecords || []).forEach(r => {
+        if (!r || !r.id) return;
         txnRows.push({
           id: r.id,
           bank_id: b.id,
@@ -3989,6 +4014,10 @@ function buildSupabaseTxnRows() {
     });
   });
   return txnRows;
+}
+
+function buildSupabaseTxnRows() {
+  return buildSupabaseTxnRowsFromBanks(corporateBanks);
 }
 
 async function persistViaSupabaseClient(deletions = pendingDeletedSheets) {
@@ -4049,8 +4078,11 @@ async function persistToSupabase() {
     do {
       persistQueued = false;
       const deletions = collectDeletionPayload();
+      const banksToSave = banksWithoutDeletedSheets(corporateBanks, deletions);
+      const txnRows = buildSupabaseTxnRowsFromBanks(banksToSave);
       const payload = {
-        banks: banksWithoutDeletedSheets(corporateBanks, deletions),
+        banks: banksToSave,
+        transactions: txnRows,
         invoices: appInvoices,
         bills: appVendorBills,
         activities: recentActivities,
@@ -4065,7 +4097,12 @@ async function persistToSupabase() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        saved = res.ok;
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = await res.json();
+          const written = data && data.restSync ? Number(data.restSync.transactions) || 0 : 0;
+          saved = !!(data && data.success && (txnRows.length === 0 || written > 0));
+        }
       } catch (e) {
         saved = false;
       }
@@ -4083,6 +4120,7 @@ async function persistToSupabase() {
         updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
       } else {
         updateSupabaseSyncBadge('error', 'Supabase Sync Error');
+        showToast('Could not save transactions to the database. Check the server connection and try Sync.', 'amber');
       }
     } while (persistQueued);
   } catch (err) {

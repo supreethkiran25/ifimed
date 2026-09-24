@@ -7,3 +7,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+bootstrap_fresh_supabase.js
+purge_dummy_data_supabase.js
+scratch_*.js
