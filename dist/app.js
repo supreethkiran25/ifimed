@@ -3283,16 +3283,18 @@ async function commitStatementImport(draft) {
   });
 
   renderAll(false);
-  await persistToSupabase();
-  if (draft.fileName) {
+  const persisted = await persistToSupabase();
+  if (draft.fileName && persisted) {
     uploadRawStatementFile(draft.fileName, draft.csvText);
   }
 
   const totalAdded = draft.addedCredits + draft.addedDebits;
-  showToast(
-    `Saved ${totalAdded} transactions to ${bank.name} (${bank.accNo}) across ${draft.months.length} month${draft.months.length === 1 ? '' : 's'}: ${monthLabels}.`,
-    totalAdded > 0 ? 'success' : 'amber'
-  );
+  if (persisted) {
+    showToast(
+      `Saved ${totalAdded} transactions to ${bank.name} (${bank.accNo}) across ${draft.months.length} month${draft.months.length === 1 ? '' : 's'}: ${monthLabels}.`,
+      totalAdded > 0 ? 'success' : 'amber'
+    );
+  }
 }
 
 function collectDeletionPayload() {
@@ -4074,6 +4076,7 @@ async function persistToSupabase() {
   }
   isSupabaseSyncing = true;
   updateSupabaseSyncBadge('syncing', 'Syncing to Supabase...');
+  let persistOk = false;
   try {
     do {
       persistQueued = false;
@@ -4091,6 +4094,7 @@ async function persistToSupabase() {
       };
 
       let saved = false;
+      let saveError = '';
       try {
         const res = await fetch('/api/supabase/save', {
           method: 'POST',
@@ -4098,13 +4102,17 @@ async function persistToSupabase() {
           body: JSON.stringify(payload)
         });
         const ct = res.headers.get('content-type') || '';
-        if (res.ok && ct.includes('application/json')) {
+        if (ct.includes('application/json')) {
           const data = await res.json();
           const written = data && data.restSync ? Number(data.restSync.transactions) || 0 : 0;
-          saved = !!(data && data.success && (txnRows.length === 0 || written > 0));
+          saved = !!(res.ok && data && data.success && (txnRows.length === 0 || written > 0));
+          if (!saved) saveError = (data && data.error) || `Save failed (${res.status})`;
+        } else {
+          saveError = `Save failed (${res.status})`;
         }
       } catch (e) {
         saved = false;
+        saveError = e.message || 'Save request failed';
       }
 
       if (!saved) {
@@ -4112,6 +4120,7 @@ async function persistToSupabase() {
       }
 
       if (saved) {
+        persistOk = true;
         pendingDeletedSheets = pendingDeletedSheets.filter(d =>
           !deletions.some(x => x.bankId === d.bankId && x.monthId === d.monthId)
         );
@@ -4120,12 +4129,14 @@ async function persistToSupabase() {
         updateSupabaseSyncBadge('synced', `Supabase Synced · ${timeStr}`);
       } else {
         updateSupabaseSyncBadge('error', 'Supabase Sync Error');
-        showToast('Could not save transactions to the database. Check the server connection and try Sync.', 'amber');
+        showToast(saveError || 'Could not save transactions to the database. Check Vercel env vars and Redeploy.', 'amber');
       }
     } while (persistQueued);
+    return persistOk;
   } catch (err) {
     console.warn('Supabase persist error:', err);
     updateSupabaseSyncBadge('error', 'Supabase Offline');
+    return false;
   } finally {
     isSupabaseSyncing = false;
     if (persistQueued) persistToSupabase();
