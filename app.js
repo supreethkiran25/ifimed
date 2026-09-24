@@ -84,27 +84,10 @@ let confirmingGuestName = '';
 // =============================================================================
 // Supabase Authentication Configuration & State
 // =============================================================================
-const SUPABASE_URL = 'https://bdvktgrehxwjovhycvsj.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_5UIETbqIx6cB_-GcicQqUg_KcjPysFm';
-
-let supabaseClient = null;
 let currentAuthUser = null;
 
 function getSupabaseClient() {
-  if (!supabaseClient && typeof window !== 'undefined' && window.supabase && window.supabase.createClient) {
-    try {
-      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true
-        }
-      });
-    } catch (e) {
-      console.warn('Supabase initialization error:', e);
-    }
-  }
-  return supabaseClient;
+  return null;
 }
 
 function getUserInitials(name, email) {
@@ -172,10 +155,7 @@ function updateAuthUI(user) {
 
 async function handleSignOut() {
   try {
-    const client = getSupabaseClient();
-    if (client) {
-      await client.auth.signOut();
-    }
+    await fetch('/api/auth/signout', { method: 'POST' });
   } catch (err) {
     console.warn('SignOut error:', err);
   } finally {
@@ -4937,7 +4917,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup Authentication Listeners & Session Handling (Pure Enterprise Sign In)
 function setupSupabaseAuthListeners() {
-  const client = getSupabaseClient();
   const authGateOverlay = document.getElementById('authGateOverlay');
   const authForm = document.getElementById('authForm');
   const authEmail = document.getElementById('authEmail');
@@ -5007,49 +4986,23 @@ function setupSupabaseAuthListeners() {
       if (authBtnText) authBtnText.textContent = 'Verifying...';
 
       try {
-        const activeClient = getSupabaseClient();
-        if (!activeClient) {
-          // If Supabase CDN is unreachable, provide fallback authentication
-          if (email === 'admin@ifimed.com' && password === 'Admin@123456') {
-            const mockUser = {
-              email: 'admin@ifimed.com',
-              user_metadata: { name: 'IFIMED Admin', role: 'Corporate Controller' }
-            };
-            localStorage.setItem('ifimed_auth_user', JSON.stringify(mockUser));
-            updateAuthUI(mockUser);
-            showToast('Authenticated as Corporate Controller (Local Fallback)');
-            return;
-          } else if (email === 'controller@ifimed.com' && password === 'Ifimed@2026!') {
-            const mockUser = {
-              email: 'controller@ifimed.com',
-              user_metadata: { name: 'Chief Financial Controller', role: 'Treasury Controller' }
-            };
-            localStorage.setItem('ifimed_auth_user', JSON.stringify(mockUser));
-            updateAuthUI(mockUser);
-            showToast('Authenticated as Chief Financial Controller (Local Fallback)');
-            return;
-          }
-          throw new Error('Supabase client could not connect. Check internet access.');
-        }
-
-        const { data, error } = await activeClient.auth.signInWithPassword({
-          email,
-          password
+        const res = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
         });
-
-        if (error) {
-          throw error;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success || !data.user) {
+          throw new Error(data.error || 'Invalid email or password. Please try again.');
         }
 
-        if (data && data.user) {
-          if (authRememberMe && authRememberMe.checked) {
-            localStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
-          } else {
-            sessionStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
-          }
-          updateAuthUI(data.user);
-          showToast(`Welcome back, ${data.user.user_metadata?.name || data.user.email}!`);
+        if (authRememberMe && authRememberMe.checked) {
+          localStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
+        } else {
+          sessionStorage.setItem('ifimed_auth_user', JSON.stringify(data.user));
         }
+        updateAuthUI(data.user);
+        showToast(`Welcome back, ${data.user.user_metadata && data.user.user_metadata.name ? data.user.user_metadata.name : data.user.email}!`);
       } catch (err) {
         console.error('Auth error:', err);
         showAlert(err.message || 'Invalid email or password. Please try again.');
@@ -5096,23 +5049,6 @@ function setupSupabaseAuthListeners() {
   // 6. Session Restoration on Load
   const initSession = async () => {
     try {
-      if (client) {
-        client.auth.onAuthStateChange((event, session) => {
-          if (session && session.user) {
-            updateAuthUI(session.user);
-          } else if (event === 'SIGNED_OUT') {
-            updateAuthUI(null);
-          }
-        });
-
-        const { data } = await client.auth.getSession();
-        if (data && data.session && data.session.user) {
-          updateAuthUI(data.session.user);
-          return;
-        }
-      }
-
-      // Check saved user in storage
       const savedUserStr = localStorage.getItem('ifimed_auth_user') || sessionStorage.getItem('ifimed_auth_user');
       if (savedUserStr) {
         try {

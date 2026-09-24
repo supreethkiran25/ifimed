@@ -2,10 +2,13 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { getSupabaseConfig } = require('./lib/server-env');
+const { handleAuthSignIn, handleAuthSignOut } = require('./lib/auth-api');
 
 const PORT = process.env.PORT || 3000;
-const SUPABASE_PROJECT_REF = 'bdvktgrehxwjovhycvsj';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkdmt0Z3JlaHh3am92aHljdnNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDE3MzI4MCwiZXhwIjoyMTA1NzQ5MjgwfQ.1yL1yZzkMtf3_YIFHOKcIT8_GXq7HtAcjl6c_lnTQkw';
+const supabaseCfg = getSupabaseConfig();
+const SUPABASE_PROJECT_REF = supabaseCfg.projectRef;
+const SUPABASE_SERVICE_KEY = supabaseCfg.serviceKey;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -705,6 +708,15 @@ async function handler(req, res) {
     const rawUrl = req.url || '/';
     const cleanPath = rawUrl.split('?')[0].split('#')[0];
 
+    if (cleanPath === '/api/auth/signin' && req.method === 'POST') {
+      await handleAuthSignIn(req, res);
+      return;
+    }
+    if (cleanPath === '/api/auth/signout') {
+      await handleAuthSignOut(req, res);
+      return;
+    }
+
     // Supabase Cloud Statement Archive Endpoint
     if (cleanPath === '/api/supabase/upload-statement' && req.method === 'POST') {
       let body = '';
@@ -759,7 +771,7 @@ async function handler(req, res) {
           res.end(JSON.stringify({
             success: true,
             source: 'supabase_postgres_rest',
-            project: SUPABASE_PROJECT_REF,
+            project: 'configured',
             data: state
           }));
           return;
@@ -801,7 +813,7 @@ async function handler(req, res) {
           res.end(JSON.stringify({
             success: !!result.success,
             deletedFrom: 'supabase_postgres_tables',
-            project: SUPABASE_PROJECT_REF,
+            project: 'configured',
             result
           }));
         } catch (delErr) {
@@ -835,7 +847,7 @@ async function handler(req, res) {
           res.end(JSON.stringify({
             success: true,
             syncedTo: 'supabase_postgres_tables',
-            project: SUPABASE_PROJECT_REF,
+            project: 'configured',
             restSync: restSync,
             timestamp: parsed.updatedAt
           }));
@@ -907,7 +919,7 @@ async function handler(req, res) {
         });
         res.end(JSON.stringify({
           success: true,
-          source: 'Supabase Cloud PostgreSQL (bdvktgrehxwjovhycvsj)',
+          source: 'supabase_postgres',
           accounts: banks,
           invoices: invoices,
           bills: bills
@@ -953,7 +965,7 @@ const server = http.createServer(handler);
 
 server.listen(PORT, () => {
   console.log(`IFIMED Reconciliation Server running at http://localhost:${PORT}/`);
-  console.log(`Supabase Cloud Database connected: project [${SUPABASE_PROJECT_REF}]`);
+  console.log('Supabase Cloud Database connected');
 });
 
 module.exports = server;

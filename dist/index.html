@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Bank Statements & Reconciliation Desk | IFIMED Pharmaceuticals</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=4.6">
-  <!-- Supabase JS Client v2 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="styles.css?v=4.7">
   <!-- SheetJS for universal Excel & CSV parsing -->
   <script src="xlsx.full.min.js"></script>
   <script>
@@ -67,7 +65,7 @@
       </div>
 
       <!-- Supabase Cloud DB status + explicit sync action -->
-      <div class="supabase-db-status" role="status" aria-live="polite" aria-atomic="true" title="Connected to Supabase Cloud Database (bdvktgrehxwjovhycvsj)">
+      <div class="supabase-db-status" role="status" aria-live="polite" aria-atomic="true" title="Workspace database sync">
         <span class="supabase-db-dot" id="supabaseDbDot" aria-hidden="true"></span>
         <span class="supabase-db-text" id="supabaseDbSyncText">Supabase Synced · 12:34 am</span>
         <button type="button" class="btn btn-outline" id="supabaseDbSyncBtn" title="Sync workspace now" aria-label="Sync workspace now">
@@ -109,8 +107,8 @@
               <span class="meta-val meta-val-green"><span class="meta-status-dot"></span> Active Session</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">Project Ref:</span>
-              <span class="meta-val font-mono">bdvktgrehxw...</span>
+              <span class="meta-label">Workspace:</span>
+              <span class="meta-val">Secure cloud sync</span>
             </div>
           </div>
           <div class="user-dropdown-divider"></div>
@@ -1138,8 +1136,8 @@
   <span id="kpiProgressSubtext" style="display: none;"></span>
 
   <!-- Real Accounting & Bank Statement Dataset -->
-  <script src="data_ifimed.js?v=4.6"></script>
+  <script src="data_ifimed.js?v=4.7"></script>
   <!-- Application Logic -->
-  <script src="app.js?v=4.6"></script>
+  <script src="app.js?v=4.7"></script>
 </body>
 </html>
