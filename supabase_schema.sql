@@ -84,6 +84,21 @@ CREATE TABLE IF NOT EXISTS public.bank_transactions (
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 7. Accounting Adjustments Table
+CREATE TABLE IF NOT EXISTS public.adjustments (
+    id TEXT PRIMARY KEY,
+    bank_id TEXT REFERENCES public.corporate_banks(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    adjustment_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    reference TEXT,
+    debit_or_credit TEXT NOT NULL CHECK (debit_or_credit IN ('debit', 'credit')),
+    amount NUMERIC(14, 2) NOT NULL,
+    created_by TEXT NOT NULL,
+    status TEXT DEFAULT 'Approved',
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- Enable Row Level Security (RLS) on all tables
 ALTER TABLE public.corporate_banks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
@@ -91,6 +106,7 @@ ALTER TABLE public.vendor_bills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reconciled_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bank_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.adjustments ENABLE ROW LEVEL SECURITY;
 
 -- Allow Authenticated and Publishable (anon) clients full read & write access
 DO $$
@@ -98,7 +114,7 @@ DECLARE
   t TEXT;
   pol TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['corporate_banks', 'invoices', 'vendor_bills', 'reconciled_mappings', 'activity_logs', 'bank_transactions']
+  FOREACH t IN ARRAY ARRAY['corporate_banks', 'invoices', 'vendor_bills', 'reconciled_mappings', 'activity_logs', 'bank_transactions', 'adjustments']
   LOOP
     pol := 'Allow authenticated read/write on ' || t;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t AND policyname = pol) THEN

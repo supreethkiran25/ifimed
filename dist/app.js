@@ -179,10 +179,39 @@ async function handleSignOut() {
 
 // Nav & Shell
 const navDashboard = document.getElementById('navDashboard');
+const navInvoices = document.getElementById('navInvoices');
 const navBankStatements = document.getElementById('navBankStatements');
+const navVirtualLedger = document.getElementById('navVirtualLedger');
 const viewDashboard = document.getElementById('viewDashboard');
+const viewInvoices = document.getElementById('viewInvoices');
 const viewBankStatements = document.getElementById('viewBankStatements');
+const viewVirtualLedger = document.getElementById('viewVirtualLedger');
+const navInvoicesBadge = document.getElementById('navInvoicesBadge');
 const currentCrumb = document.getElementById('currentCrumb');
+
+// Invoices Desk State
+let invoicesFilter = 'all'; // 'all' | 'reconciled' | 'partial' | 'unreconciled'
+let invoicesSearch = '';
+let invoicesSort = 'date-desc';
+
+// Virtual Ledger State
+let ledgerBankId = 'all';
+let ledgerMonthId = 'all';
+let ledgerTab = 'all'; // 'all' | 'receipts' | 'payments' | 'adjustments' | 'transfers' | 'receivables' | 'payables' | 'party-ledgers' | 'ageing'
+let ledgerSelectedParty = '';
+let ledgerAgeingType = 'receivables'; // 'receivables' | 'payables'
+let ledgerSearchQuery = '';
+let ledgerStatusFilter = 'all'; // 'all' | 'reconciled' | 'pending' | 'matched' | 'exception'
+let ledgerDateFrom = '';
+let ledgerDateTo = '';
+let ledgerMinAmount = null;
+let ledgerMaxAmount = null;
+let ledgerCurrentPage = 1;
+let ledgerPageSize = 25;
+let appAdjustments = [];
+let activeDrawerTxn = null;
+let ledgerSortColumn = 'date';
+let ledgerSortDir = 'desc'; // 'desc' or 'asc'
 
 // Header & Bank Selector
 const bankSelectorBtn = document.getElementById('bankSelectorBtn');
@@ -295,8 +324,12 @@ const closeAddBankModalBtn = document.getElementById('closeAddBankModalBtn');
 const cancelAddBankBtn = document.getElementById('cancelAddBankBtn');
 const addBankForm = document.getElementById('addBankForm');
 const dashAddBankBtn = document.getElementById('dashAddBankBtn');
-const autoDetectBanksBtn = document.getElementById('autoDetectBanksBtn');
-const detectStatementsBtn = document.getElementById('detectStatementsBtn');
+
+// Statement Rejection Modal
+const statementRejectionModal = document.getElementById('statementRejectionModal');
+const closeRejectionModalBtn = document.getElementById('closeRejectionModalBtn');
+const rejectionDismissBtn = document.getElementById('rejectionDismissBtn');
+const rejectionActionBtn = document.getElementById('rejectionActionBtn');
 
 // Global Search / Command Palette
 const globalSearchTrigger = document.getElementById('globalSearchTrigger');
@@ -410,16 +443,16 @@ function escapeHtml(str) {
 // 4. View Navigation (Sidebar Router)
 // =============================================================================
 
-function switchView(viewName) {
+function switchView(viewName, updateUrl = true) {
   currentActiveView = viewName;
   
   // Update sidebar active buttons
-  [navDashboard, navBankStatements].forEach(btn => {
+  [navDashboard, navInvoices, navBankStatements, navVirtualLedger].forEach(btn => {
     if (btn) btn.classList.remove('active');
   });
 
   // Update panels
-  [viewDashboard, viewBankStatements].forEach(panel => {
+  [viewDashboard, viewInvoices, viewBankStatements, viewVirtualLedger].forEach(panel => {
     if (panel) {
       panel.style.display = 'none';
       panel.classList.remove('active');
@@ -433,7 +466,32 @@ function switchView(viewName) {
       viewDashboard.classList.add('active');
     }
     if (currentCrumb) currentCrumb.textContent = 'Dashboard';
+    if (updateUrl) {
+      try { window.history.pushState({ view: 'dashboard' }, '', '/dashboard'); } catch (e) {}
+    }
     renderDashboardView();
+  } else if (viewName === 'invoices') {
+    if (navInvoices) navInvoices.classList.add('active');
+    if (viewInvoices) {
+      viewInvoices.style.display = 'block';
+      viewInvoices.classList.add('active');
+    }
+    if (currentCrumb) currentCrumb.textContent = 'Customer Invoices';
+    if (updateUrl) {
+      try { window.history.pushState({ view: 'invoices' }, '', '/invoices'); } catch (e) {}
+    }
+    renderInvoicesView();
+  } else if (viewName === 'virtual-ledger' || viewName === 'ledger') {
+    if (navVirtualLedger) navVirtualLedger.classList.add('active');
+    if (viewVirtualLedger) {
+      viewVirtualLedger.style.display = 'block';
+      viewVirtualLedger.classList.add('active');
+    }
+    if (currentCrumb) currentCrumb.textContent = 'Virtual Ledger';
+    if (updateUrl) {
+      try { window.history.pushState({ view: 'virtual-ledger' }, '', '/virtual-ledger'); } catch (e) {}
+    }
+    renderVirtualLedgerView();
   } else {
     if (navBankStatements) navBankStatements.classList.add('active');
     if (viewBankStatements) {
@@ -441,8 +499,14 @@ function switchView(viewName) {
       viewBankStatements.classList.add('active');
     }
     if (currentCrumb) currentCrumb.textContent = 'Bank statements';
+    if (updateUrl) {
+      try { window.history.pushState({ view: 'bank-statements' }, '', '/bank-statements'); } catch (e) {}
+    }
     renderAll();
   }
+
+  updateInvoicesBadge();
+  updateVirtualLedgerBadge();
 
   // Auto-close mobile drawer if open
   const appSidebar = document.querySelector('.app-sidebar');
@@ -562,69 +626,12 @@ async function waitForInitialWorkspaceLoad(ms = 8000) {
 }
 
 async function autoDetectBankAccounts(interactive = true) {
-  try {
-    await waitForInitialWorkspaceLoad();
-    const localFiles = await fetchLocalStatementFiles();
-    const beforeIds = new Set(corporateBanks.map(b => b.id));
-    const detectedLabels = [];
-    let registered = 0;
-
-    localFiles.forEach(file => {
-      const detection = registerBankFromSource(file.csvText, file.fileName);
-      if (!detection || !detection.bank) return;
-      if (!beforeIds.has(detection.bank.id)) {
-        registered++;
-        beforeIds.add(detection.bank.id);
-      }
-      const acc = detection.extracted && detection.extracted.fullAccNo
-        ? detection.extracted.fullAccNo
-        : (detection.bank.fullAccNo || detection.bank.accNo);
-      detectedLabels.push(`${detection.bank.name} ${acc}`);
-    });
-
-    const { moved, updated } = rehomeUploadedSheetsBySource();
-
-    let imported = 0;
-    if (!workspaceHasStatementRows() && localFiles.length) {
-      for (const file of localFiles) {
-        await processBankStatementCsv(file.csvText, file.fileName, { autoApprove: true });
-        imported++;
-      }
-    }
-
-    const active = getActiveBank();
-    if (active) {
-      selectedBankId = active.id;
-      if (active.sheets && active.sheets[0]) selectedMonthId = active.sheets[0].monthId;
-    }
-    activeConfirmingRowId = null;
-    if (bankDropdownMenu) bankDropdownMenu.style.display = 'none';
-
-    renderAll(false);
-    await persistToSupabase();
-
-    if (interactive) {
-      const parts = [];
-      if (detectedLabels.length) parts.push(detectedLabels.join(', '));
-      if (registered) parts.push(`${registered} new account${registered === 1 ? '' : 's'} added`);
-      if (updated) parts.push(`${updated} uploaded sheet${updated === 1 ? '' : 's'} re-read`);
-      if (moved) parts.push(`${moved} sheet${moved === 1 ? '' : 's'} moved to the matching A/c`);
-      if (imported) parts.push(`${imported} local file${imported === 1 ? '' : 's'} imported`);
-      if (parts.length) {
-        showToast(`Auto-detected accounts from statement files: ${parts[0]}${parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : ''}.`);
-      } else if (!localFiles.length && !workspaceHasStatementRows()) {
-        showToast('No local statement files found. Upload a bank statement first.', 'amber');
-      } else {
-        showToast('Accounts already match the uploaded statement files.', 'info');
-      }
-    }
-    return true;
-  } catch (err) {
-    console.error('Auto-detect accounts failed:', err);
-    if (interactive) showToast('Could not auto-detect accounts from the statement files.', 'amber');
-    return false;
+  if (interactive) {
+    showToast('Auto-detection is disabled. Please select your matching corporate bank desk before uploading statements.', 'info');
   }
+  return false;
 }
+
 
 function promptDeleteBank(bankId, event) {
   if (event) event.stopPropagation();
@@ -1759,13 +1766,29 @@ function ensureCatalogDoc(code, row, isDebit) {
   return inv;
 }
 
+function docsMatchFlexible(docNo, haystack) {
+  if (!docNo || !haystack) return false;
+  const no = String(docNo).trim().toLowerCase();
+  const hay = String(haystack).trim().toLowerCase();
+  if (hay.includes(no)) return true;
+
+  const alphaNo = no.replace(/[^a-z0-9]/g, '');
+  const alphaHay = hay.replace(/[^a-z0-9]/g, '');
+  if (alphaNo.length >= 4 && alphaHay.includes(alphaNo)) return true;
+
+  const numOnly = no.replace(/\D/g, '');
+  if (numOnly.length >= 4 && alphaHay.includes(numOnly)) return true;
+
+  return false;
+}
+
 function findAutoMatchDoc(row, catalog, used, isDebit) {
   const haystack = `${row.narration || ''} ${row.bankRef || ''} ${row.payer || ''}`;
   const hay = haystack.toLowerCase();
 
   const catalogHits = (catalog || []).filter(doc => {
     const no = docNumberOf(doc);
-    return no && no.length >= 4 && !used.has(no.toLowerCase()) && hay.includes(no.toLowerCase());
+    return no && no.length >= 3 && !used.has(no.toLowerCase()) && docsMatchFlexible(no, hay);
   });
   if (catalogHits.length === 1) {
     return { doc: catalogHits[0], reason: 'System (Reconciled from Statement)' };
@@ -1773,6 +1796,8 @@ function findAutoMatchDoc(row, catalog, used, isDebit) {
   if (catalogHits.length > 1) {
     const named = catalogHits.filter(doc => partyNamesMatch(row.payer || row.narration, partyNameOf(doc)));
     if (named.length === 1) return { doc: named[0], reason: 'System (Reconciled from Statement)' };
+    const amtMatch = catalogHits.filter(doc => Math.abs(Number(doc.amount) - Number(row.amount)) <= 1.00);
+    if (amtMatch.length === 1) return { doc: amtMatch[0], reason: 'System (Reconciled by Doc & Amount)' };
   }
 
   const codes = extractStatementDocCodes(haystack);
@@ -1781,13 +1806,13 @@ function findAutoMatchDoc(row, catalog, used, isDebit) {
     : codes.filter(c => /^IFB|^INV/.test(c)).concat(codes);
   for (const code of preferred) {
     if (used.has(code.toLowerCase())) continue;
-    const existing = (catalog || []).find(doc => docNumberOf(doc).toLowerCase() === code.toLowerCase());
-    return { doc: existing || ensureCatalogDoc(code, row, isDebit), reason: 'System (Reconciled from Statement)' };
+    const existing = (catalog || []).find(doc => docsMatchFlexible(docNumberOf(doc), code));
+    if (existing) return { doc: existing, reason: 'System (Reconciled from Statement)' };
   }
 
   const amountHits = (catalog || []).filter(doc =>
     !used.has(docNumberOf(doc).toLowerCase()) &&
-    Math.abs(Number(doc.amount) - Number(row.amount)) < 0.01
+    Math.abs(Number(doc.amount) - Number(row.amount)) <= 1.00
   );
   if (amountHits.length === 1 && partyNamesMatch(row.payer || row.narration, partyNameOf(amountHits[0]))) {
     return { doc: amountHits[0], reason: 'System (Auto-Matched by Amount & Name)' };
@@ -2079,20 +2104,47 @@ function isPlausibleMoneyAmount(amount) {
   return true;
 }
 
-function parseAmount(val) {
+function parseAmount(val, options = {}) {
   if (val === undefined || val === null) return 0;
   let str = String(val).trim();
   if (!str || str === '-' || str === '--' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'na') return 0;
   if (isDateLikeValue(str)) return 0;
-  const isNegative = (str.startsWith('(') && str.endsWith(')')) || str.endsWith('-') || str.toLowerCase().endsWith('dr');
+
+  // Clean Indian currency symbols (₹, Rs., etc.)
+  str = str.replace(/[₹\u20B9]/g, '').replace(/rs\.?/gi, '').trim();
+
+  // In Indian accounting & pharma sales registers, 'Dr' stands for a Debit balance (positive receivable!)
+  // Only negative if explicitly wrapped in parentheses (12500) or ends with minus 12500-
+  const isNegative = (str.startsWith('(') && str.endsWith(')')) || (str.endsWith('-') && !str.includes(' '));
+
+  // Strip Dr/Cr suffixes, commas, and other non-numeric chars
+  str = str.replace(/dr|cr/gi, '').trim();
+  str = str.replace(/,/g, '');
   str = str.replace(/[^0-9.-]/g, '');
+
   if (!str || str === '-' || str === '.' || str === '-.') return 0;
   let num = parseFloat(str) || 0;
   if (isNegative) num = -Math.abs(num);
   return num;
 }
 
+function findMaxPlausibleAmountInRow(cols, skipCols) {
+  const skip = new Set((skipCols || []).filter(i => i >= 0));
+  let maxAmt = 0;
+  for (let i = 0; i < cols.length; i++) {
+    if (skip.has(i)) continue;
+    if (isDateLikeValue(cols[i])) continue;
+    const amt = Math.abs(parseAmount(cols[i]));
+    if (isPlausibleMoneyAmount(amt) && amt > maxAmt) {
+      maxAmt = amt;
+    }
+  }
+  return maxAmt;
+}
+
 function findPlausibleAmountInRow(cols, skipCols) {
+  const max = findMaxPlausibleAmountInRow(cols, skipCols);
+  if (max > 0) return max;
   const skip = new Set((skipCols || []).filter(i => i >= 0));
   for (let i = cols.length - 1; i >= 0; i--) {
     if (skip.has(i)) continue;
@@ -2106,21 +2158,24 @@ function findPlausibleAmountInRow(cols, skipCols) {
 function isSummaryOrFooterLine(line) {
   if (!line || !line.trim()) return true;
   const normalized = line.toLowerCase().replace(/[\s\-_]+/g, ' ').trim();
-  if (normalized.startsWith('total') ||
+
+  // Never discard a row if it looks like a valid table header row with column labels
+  if (/(\bdate\b|\bdt\b).+(\bparticulars\b|\bparty\b|\bcustomer\b|\bvch\b|\binvoice\b|\bbill\b|\bdebit\b)/i.test(normalized)) {
+    return false;
+  }
+
+  if (normalized.startsWith('total ') ||
+      normalized === 'total' ||
+      normalized.startsWith('grand total') ||
+      normalized.startsWith('sub total') ||
       normalized.includes('t o t a l') ||
       normalized.includes('closing balance') ||
       normalized.includes('opening balance') ||
       normalized.includes('end of statement') ||
       normalized.includes('generated on') ||
       normalized.includes('statement summary') ||
-      normalized.includes('statement period') ||
-      normalized.includes('page ') ||
+      normalized.startsWith('page ') ||
       normalized.startsWith('count ') ||
-      normalized.startsWith('grand total') ||
-      normalized.includes('marg erp') ||
-      normalized.includes('sales book') ||
-      normalized.includes('purchase book') ||
-      normalized.includes('online purchase import') ||
       /call\s*0\d{8,}/.test(normalized) ||
       /^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s*[-–to]+\s*\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/i.test(normalized)) {
     return true;
@@ -2129,12 +2184,13 @@ function isSummaryOrFooterLine(line) {
 }
 
 function isGstOrSalesRegisterFile(fileName, csvText) {
-  const sample = `${fileName || ''} ${(csvText || '').slice(0, 8000)}`.toLowerCase();
+  const sample = `${fileName || ''} ${(csvText || '').slice(0, 10000)}`.toLowerCase();
   if (/gstr|gst[_\s-]?r(?:eturn)?|gstr-?1|gst r-?1|e-?invoice|einvoice/.test(sample)) return true;
-  if (/sales\s*book|sales\s*register|invoice\s*register|invoice\s*book|marg\s*erp/.test(sample)) return true;
-  const invoiceHits = ((csvText || '').match(/\bIFB\d{4,}\b/gi) || []).length;
-  const hasBankCue = /ifsc|a\/c no|account no|withdrawal|deposit \(cr\)|bank statement|\butr\b|cheque no/i.test(sample);
-  return invoiceHits >= 5 && !hasBankCue;
+  if (/sales\s*book|sales\s*register|invoice\s*register|invoice\s*book|marg\s*erp|busy\s*accounting|bill\s*register/.test(sample)) return true;
+  if (/\bvch\s*type\b|\bvoucher\s*type\b|\bvch\s*no\b|\bparticulars\b/i.test(sample) && /\bsales\b|\btaxable\b|\bbill\s*amt\b|\bgstin\b/i.test(sample)) return true;
+  const invoiceHits = ((csvText || '').match(/\bIFB[-_\s]?\d{3,}\b/gi) || []).length;
+  const hasBankCue = /ifsc|a\/c no\b|account number|statement summary|withdrawal\s*\(dr\)|deposit\s*\(cr\)/i.test(sample);
+  return (invoiceHits >= 3 && !hasBankCue);
 }
 
 function isSalesRegisterOrInvoiceBook(fileName, csvText) {
@@ -2563,20 +2619,138 @@ function applyExtractedBankDetails(bank, extracted) {
   return bank;
 }
 
+const STATEMENT_BANK_BRANDS = [
+  { idPrefix: 'icici', name: 'ICICI Bank', fileRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, ifscRe: /\bicic0[a-z0-9]{6}\b/i, defaultIfsc: 'ICIC0000002' },
+  { idPrefix: 'axis', name: 'Axis Bank', fileRe: /(?:^|[^a-z0-9])axis(?:[^a-z0-9]|$)/i, metaRe: /\baxis\s+bank\b|\butib0/i, ifscRe: /\butib0[a-z0-9]{6}\b/i, defaultIfsc: 'UTIB0000042' },
+  { idPrefix: 'kotak', name: 'Kotak Mahindra Bank', fileRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, ifscRe: /\bkkbk0[a-z0-9]{6}\b/i, defaultIfsc: 'KKBK0000421' },
+  { idPrefix: 'canara', name: 'Canara Bank', fileRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, ifscRe: /\bcnrb0[a-z0-9]{6}\b/i, defaultIfsc: 'CNRB0000001' },
+  { idPrefix: 'hdfc', name: 'HDFC Bank', fileRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, ifscRe: /\bhdfc0[a-z0-9]{6}\b/i, defaultIfsc: 'HDFC0000001' },
+  { idPrefix: 'sbi', name: 'State Bank of India', fileRe: /\b(?:sbi|state[_\s-]?bank)\b/i, metaRe: /\bstate bank\b|\bsbin0/i, ifscRe: /\bsbin0[a-z0-9]{6}\b/i, defaultIfsc: 'SBIN0000001' },
+  { idPrefix: 'pnb', name: 'Punjab National Bank', fileRe: /\bpnb\b|punjab\s+national/i, metaRe: /\bpunjab national\b|\bpunb0/i, ifscRe: /\bpunb0[a-z0-9]{6}\b/i, defaultIfsc: 'PUNB0000001' },
+  { idPrefix: 'bob', name: 'Bank of Baroda', fileRe: /\bbaroda\b/i, metaRe: /\bbank of baroda\b|\bbarb0/i, ifscRe: /\bbarb0[a-z0-9]{6}\b/i, defaultIfsc: 'BARB0000001' },
+  { idPrefix: 'indusind', name: 'IndusInd Bank', fileRe: /\bindusind\b/i, metaRe: /\bindusind\b|\bindb0/i, ifscRe: /\bindb0[a-z0-9]{6}\b/i, defaultIfsc: 'INDB0000001' },
+  { idPrefix: 'yes', name: 'YES Bank', fileRe: /\byes[_\s-]?bank\b/i, metaRe: /\byes bank\b|\byesb0/i, ifscRe: /\byesb0[a-z0-9]{6}\b/i, defaultIfsc: 'YESB0000001' },
+  { idPrefix: 'union', name: 'Union Bank of India', fileRe: /\bunion[_\s-]?bank\b/i, metaRe: /\bunion bank\b|\bubin0/i, ifscRe: /\bubin0[a-z0-9]{6}\b/i, defaultIfsc: 'UBIN0000001' },
+  { idPrefix: 'federal', name: 'Federal Bank', fileRe: /\bfederal\s+bank\b/i, metaRe: /\bfederal bank\b|\bfdrl0/i, ifscRe: /\bfdrl0[a-z0-9]{6}\b/i, defaultIfsc: 'FDRL0000001' },
+  { idPrefix: 'idfc', name: 'IDFC First Bank', fileRe: /\bidfc\b/i, metaRe: /\bidfc\b|\bidfb0/i, ifscRe: /\bidfb0[a-z0-9]{6}\b/i, defaultIfsc: 'IDFB0000001' },
+  { idPrefix: 'scb', name: 'Standard Chartered', fileRe: /\bstandard[_\s-]?chartered\b/i, metaRe: /\bstandard chartered\b|\bscbl0/i, ifscRe: /\bscbl0[a-z0-9]{6}\b/i, defaultIfsc: 'SCBL0000001' }
+];
+
+function findBrandDefinition(idPrefix, name, ifsc = '', metaText = '') {
+  if (idPrefix) {
+    const hit = STATEMENT_BANK_BRANDS.find(b => b.idPrefix === idPrefix);
+    if (hit) return hit;
+  }
+  if (name) {
+    const lowerName = String(name).toLowerCase();
+    const hit = STATEMENT_BANK_BRANDS.find(b => b.name.toLowerCase() === lowerName || lowerName.includes(b.idPrefix));
+    if (hit) return hit;
+  }
+  if (ifsc) {
+    const code = String(ifsc).slice(0, 4).toUpperCase();
+    const hit = STATEMENT_BANK_BRANDS.find(b => (b.defaultIfsc && b.defaultIfsc.startsWith(code)) || (b.ifscRe && b.ifscRe.test(ifsc)));
+    if (hit) return hit;
+  }
+  if (metaText) {
+    const hit = STATEMENT_BANK_BRANDS.find(b => b.fileRe.test(metaText) || b.metaRe.test(metaText) || b.ifscRe.test(metaText));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function bankMatchesBrandDef(bank, brand) {
+  if (!bank || !brand) return false;
+  const bid = String(bank.id || '').toLowerCase();
+  const bname = String(bank.name || '').toLowerCase();
+  const bifsc = String(bank.ifsc || '').toUpperCase();
+  if (bid.includes(brand.idPrefix) || bname.includes(brand.idPrefix) || brand.name.toLowerCase().includes(bname)) return true;
+  if (bifsc && brand.ifscRe && brand.ifscRe.test(bifsc)) return true;
+  if (bifsc && brand.defaultIfsc && bifsc.slice(0, 4) === brand.defaultIfsc.slice(0, 4)) return true;
+  return false;
+}
+
 function detectBankFromCsv(csvText, fileName = '', options = {}) {
-  if (!Array.isArray(corporateBanks) || corporateBanks.length === 0) {
-    corporateBanks = [
-      {
-        id: 'icici-3021',
-        name: 'ICICI Bank',
-        type: 'Current A/c',
-        accNo: '••••3021',
-        fullAccNo: '000205003021',
-        ifsc: 'ICIC0000002',
-        branch: 'Mysore Main Branch, Karnataka',
-        sheets: []
-      }
-    ];
+  const sheetNames = (options && options.sheetNames) || [];
+  const extracted = extractStatementBankDetails(csvText, fileName, sheetNames);
+  const meta = statementMetadataText(csvText);
+  const fileMeta = `${fileName || ''} ${sheetNames.join(' ')} ${meta}`;
+
+  // 1. Match by Account Number if extracted
+  if (extracted.fullAccNo && extracted.fullAccNo.length >= 6) {
+    const byAcc = corporateBanks.find(b => accountsEqual(b.fullAccNo, extracted.fullAccNo));
+    if (byAcc) {
+      return { bank: byAcc, isSaved: true, confidence: 'high', reason: `Matched saved account ${byAcc.name} (${byAcc.accNo})`, extracted };
+    }
+  }
+
+  // 2. Match by IFSC if extracted
+  if (extracted.ifsc) {
+    const byIfsc = corporateBanks.find(b => String(b.ifsc || '').toUpperCase() === extracted.ifsc);
+    if (byIfsc && (!extracted.fullAccNo || accountsEqual(byIfsc.fullAccNo, extracted.fullAccNo))) {
+      return { bank: byIfsc, isSaved: true, confidence: 'high', reason: `Matched saved bank IFSC ${extracted.ifsc} (${byIfsc.name})`, extracted };
+    }
+  }
+
+  // 3. Match by Brand
+  const detectedBrand = findBrandDefinition(extracted.idPrefix, extracted.name, extracted.ifsc, fileMeta);
+  if (detectedBrand) {
+    const matchingSaved = corporateBanks.filter(b => bankMatchesBrandDef(b, detectedBrand));
+    if (matchingSaved.length === 1) {
+      return { bank: matchingSaved[0], isSaved: true, confidence: 'medium', reason: `Matched saved account ${matchingSaved[0].name}`, extracted, detectedBrand };
+    } else if (matchingSaved.length > 1) {
+      const active = getActiveBank();
+      const pick = (active && matchingSaved.some(b => b.id === active.id)) ? active : matchingSaved[0];
+      return { bank: pick, isSaved: true, confidence: 'medium', reason: `Matched saved ${pick.name}`, extracted, detectedBrand };
+    }
+    // Brand detected but NOT saved in corporateBanks — auto-detection is disabled, NEVER auto-register!
+    return {
+      bank: null,
+      isSaved: false,
+      isUnregistered: true,
+      confidence: 'none',
+      reason: `Unregistered corporate bank: ${detectedBrand.name}`,
+      detectedBrand,
+      extracted
+    };
+  }
+
+  const active = getActiveBank() || (corporateBanks && corporateBanks[0]) || null;
+  return {
+    bank: active,
+    isSaved: !!active,
+    confidence: 'low',
+    reason: active ? `Defaulting to active desk ${active.name}` : 'No saved corporate banks',
+    extracted
+  };
+}
+
+/**
+ * Validates whether an uploaded bank statement matches the active corporate bank desk.
+ * Strict rules:
+ * - If statement points to another saved bank desk -> REJECT with Active Bank Desk Mismatch & offer switch.
+ * - If statement points to an unregistered bank -> REJECT with Unregistered Bank Account & offer Add Bank.
+ * - If statement account number conflicts with active bank -> REJECT with Account Number Mismatch.
+ * - If statement IFSC conflicts with active bank -> REJECT with IFSC Mismatch.
+ * - If file has no identifiable bank credentials to verify -> REJECT with Unverified Statement.
+ * - If matches active bank desk -> ACCEPT (valid: true).
+ */
+function validateStatementMatchesSavedBank(csvText, fileName = '', options = {}) {
+  const activeBank = (options && options.bank) ||
+    (options && options.bankId && corporateBanks.find(b => b.id === options.bankId)) ||
+    getActiveBank() ||
+    (corporateBanks && corporateBanks[0]);
+  if (!activeBank) {
+    return {
+      valid: false,
+      type: 'no_saved_bank',
+      reasonTitle: 'No Saved Corporate Bank Account',
+      reasonDesc: 'There are no corporate bank accounts configured in your workspace. Auto-detect is disabled.',
+      guidance: 'Please add a corporate bank account first using "+ Add Bank Account" before uploading statements.',
+      active: { name: 'None configured', accNo: '—', ifsc: '—' },
+      detected: { name: 'Unknown', accNo: '—', ifsc: '—', fileName: fileName || 'statement' },
+      actionLabel: '+ Add Bank Account',
+      actionType: 'add_bank'
+    };
   }
 
   const sheetNames = (options && options.sheetNames) || [];
@@ -2584,121 +2758,300 @@ function detectBankFromCsv(csvText, fileName = '', options = {}) {
   const meta = statementMetadataText(csvText);
   const fileMeta = `${fileName || ''} ${sheetNames.join(' ')} ${meta}`;
 
-  const brands = [
-    { idPrefix: 'icici', name: 'ICICI Bank', fileRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i, ifscRe: /\bicic0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'axis', name: 'Axis Bank', fileRe: /(?:^|[^a-z0-9])axis(?:[^a-z0-9]|$)/i, metaRe: /\baxis\s+bank\b|\butib0/i, ifscRe: /\butib0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'kotak', name: 'Kotak Mahindra Bank', fileRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i, ifscRe: /\bkkbk0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'canara', name: 'Canara Bank', fileRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i, ifscRe: /\bcnrb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'hdfc', name: 'HDFC Bank', fileRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, metaRe: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i, ifscRe: /\bhdfc0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'sbi', name: 'State Bank of India', fileRe: /\b(?:sbi|state[_\s-]?bank)\b/i, metaRe: /\bstate bank\b|\bsbin0/i, ifscRe: /\bsbin0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'pnb', name: 'Punjab National Bank', fileRe: /\bpnb\b|punjab\s+national/i, metaRe: /\bpunjab national\b|\bpunb0/i, ifscRe: /\bpunb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'bob', name: 'Bank of Baroda', fileRe: /\bbaroda\b/i, metaRe: /\bbank of baroda\b|\bbarb0/i, ifscRe: /\bbarb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'indusind', name: 'IndusInd Bank', fileRe: /\bindusind\b/i, metaRe: /\bindusind\b|\bindb0/i, ifscRe: /\bindb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'yes', name: 'YES Bank', fileRe: /\byes[_\s-]?bank\b/i, metaRe: /\byes bank\b|\byesb0/i, ifscRe: /\byesb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'union', name: 'Union Bank of India', fileRe: /\bunion[_\s-]?bank\b/i, metaRe: /\bunion bank\b|\bubin0/i, ifscRe: /\bubin0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'federal', name: 'Federal Bank', fileRe: /\bfederal\s+bank\b/i, metaRe: /\bfederal bank\b|\bfdrl0/i, ifscRe: /\bfdrl0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'idfc', name: 'IDFC First Bank', fileRe: /\bidfc\b/i, metaRe: /\bidfc\b|\bidfb0/i, ifscRe: /\bidfb0[a-z0-9]{6}\b/i, defaultIfsc: '' },
-    { idPrefix: 'scb', name: 'Standard Chartered', fileRe: /\bstandard[_\s-]?chartered\b/i, metaRe: /\bstandard chartered\b|\bscbl0/i, ifscRe: /\bscbl0[a-z0-9]{6}\b/i, defaultIfsc: '' }
-  ];
+  const normAcc = (acc) => String(acc || '').replace(/\D/g, '');
+  const activeAccDigits = normAcc(activeBank.fullAccNo || activeBank.accNo);
+  const detectedAccDigits = normAcc(extracted.fullAccNo);
 
-  function findBrand(idPrefix, name) {
-    return brands.find(b => b.idPrefix === idPrefix) ||
-      brands.find(b => name && b.name.toLowerCase() === String(name).toLowerCase()) ||
-      { idPrefix: idPrefix || 'bank', name: name || 'Corporate Bank', defaultIfsc: '' };
-  }
+  const detectedBrand = findBrandDefinition(extracted.idPrefix, extracted.name, extracted.ifsc, fileMeta);
 
-  function registerBankFromExtracted(brand, reason, confidence) {
-    const foundAcc = extracted.fullAccNo || '';
-    const accSuffix = foundAcc ? foundAcc.slice(-4) : String(Math.floor(1000 + Math.random() * 9000));
-    const existingId = `${brand.idPrefix}-${accSuffix}`;
-    const already = corporateBanks.find(b => b.id === existingId || accountsEqual(b.fullAccNo, foundAcc));
-    if (already) {
-      return { bank: already, isNew: false, confidence, reason, extracted };
-    }
-    const newBank = {
-      id: existingId,
-      name: brand.name,
-      type: 'Current A/c',
-      accNo: `••••${accSuffix}`,
-      fullAccNo: foundAcc || '',
-      ifsc: extracted.ifsc || brand.defaultIfsc || '',
-      branch: extracted.branch || extracted.holder || '',
-      sheets: []
-    };
-    corporateBanks.push(newBank);
-    return {
-      bank: newBank,
-      isNew: true,
-      confidence,
-      reason: reason || `Registered ${brand.name} A/c ${newBank.accNo} from the statement`,
-      extracted
-    };
-  }
-
-  if (extracted.fullAccNo && extracted.fullAccNo.length >= 8) {
-    const byAcc = corporateBanks.find(b => accountsEqual(b.fullAccNo, extracted.fullAccNo));
-    if (byAcc) {
-      return { bank: byAcc, isNew: false, confidence: 'high', reason: `Read A/c ${extracted.fullAccNo} from the statement header`, extracted };
-    }
-  }
-
-  if (extracted.ifsc) {
-    const byIfsc = corporateBanks.find(b => String(b.ifsc || '').toUpperCase() === extracted.ifsc);
-    if (byIfsc && (!extracted.fullAccNo || accountsEqual(byIfsc.fullAccNo, extracted.fullAccNo))) {
-      return { bank: byIfsc, isNew: false, confidence: 'high', reason: `Read IFSC ${extracted.ifsc} from the statement header`, extracted };
-    }
-  }
-
-  if (extracted.idPrefix || extracted.name) {
-    const brand = findBrand(extracted.idPrefix, extracted.name);
-    if (extracted.fullAccNo) {
-      return registerBankFromExtracted(brand, extracted.idPrefix ? `Identified ${brand.name} from the statement layout and A/c ${extracted.fullAccNo}` : `Identified ${brand.name}`, 'high');
-    }
-    const sameBrand = corporateBanks.filter(b =>
-      String(b.id || '').toLowerCase().includes(brand.idPrefix) ||
-      String(b.name || '').toLowerCase().includes(brand.idPrefix)
-    );
-    if (sameBrand.length === 1) {
-      return { bank: sameBrand[0], isNew: false, confidence: 'medium', reason: `Identified ${brand.name}; confirm the account`, extracted };
-    }
-    return registerBankFromExtracted(brand, `Identified ${brand.name}`, 'medium');
-  }
-
-  const named = brands.find(brand => brand.fileRe.test(fileName || '') || brand.metaRe.test(fileMeta) || brand.ifscRe.test(meta));
-  if (named) {
-    extracted.name = extracted.name || named.name;
-    extracted.idPrefix = extracted.idPrefix || named.idPrefix;
-    if (extracted.fullAccNo) {
-      return registerBankFromExtracted(named, `Filename/header matches ${named.name} A/c ${extracted.fullAccNo}`, 'high');
-    }
-    const sameBrand = corporateBanks.filter(b =>
-      String(b.id || '').toLowerCase().includes(named.idPrefix) ||
-      String(b.name || '').toLowerCase().includes(named.idPrefix)
-    );
-    if (sameBrand.length === 1) {
-      return { bank: sameBrand[0], isNew: false, confidence: 'medium', reason: `Filename/header matches ${named.name}`, extracted };
-    }
-    return registerBankFromExtracted(named, `Filename/header matches ${named.name}`, 'medium');
-  }
-
-  const active = getActiveBank() || corporateBanks[0];
-  if (active) {
-    return { bank: active, isNew: false, confidence: 'low', reason: `Could not read a bank name or A/c from the file. Suggested: ${active.name} ${active.accNo}`, extracted };
-  }
-
-  const defaultBank = {
-    id: 'corp-bank-01',
-    name: 'Primary Corporate Bank',
-    type: 'Current A/c',
-    accNo: '••••0001',
-    fullAccNo: '000000000001',
-    ifsc: '',
-    branch: '',
-    sheets: []
+  const displayAcc = (full) => {
+    if (!full) return '—';
+    const digits = normAcc(full);
+    return digits.length > 4 ? `••••${digits.slice(-4)}` : digits;
   };
-  corporateBanks.push(defaultBank);
-  return { bank: defaultBank, isNew: true, confidence: 'low', reason: 'Created default corporate bank', extracted };
+
+  const detectedDisplay = {
+    name: detectedBrand ? detectedBrand.name : (extracted.name || 'Unidentified Bank'),
+    accNo: extracted.fullAccNo ? (extracted.fullAccNo.length > 4 ? `••••${extracted.fullAccNo.slice(-4)}` : extracted.fullAccNo) : '—',
+    ifsc: extracted.ifsc || (detectedBrand ? detectedBrand.defaultIfsc : '—'),
+    fileName: fileName || 'statement.csv'
+  };
+
+  const activeDisplay = {
+    name: activeBank.name || 'Active Bank',
+    accNo: activeBank.accNo || displayAcc(activeBank.fullAccNo),
+    ifsc: activeBank.ifsc || '—'
+  };
+
+  // CHECK 1: Account number extracted and valid (>= 6 digits)
+  if (detectedAccDigits && detectedAccDigits.length >= 6) {
+    const matchesActive = accountsEqual(activeBank.fullAccNo, extracted.fullAccNo) ||
+      (activeAccDigits && activeAccDigits === detectedAccDigits) ||
+      (activeAccDigits && activeAccDigits.endsWith(detectedAccDigits)) ||
+      (detectedAccDigits && detectedAccDigits.endsWith(activeAccDigits.slice(-6)));
+
+    if (!matchesActive) {
+      // Check if it matches another saved bank desk
+      const otherBank = corporateBanks.find(b =>
+        b.id !== activeBank.id && (
+          accountsEqual(b.fullAccNo, extracted.fullAccNo) ||
+          normAcc(b.fullAccNo) === detectedAccDigits ||
+          (normAcc(b.fullAccNo) && normAcc(b.fullAccNo).endsWith(detectedAccDigits.slice(-6)))
+        )
+      );
+
+      if (otherBank) {
+        return {
+          valid: false,
+          type: 'desk_mismatch',
+          reasonTitle: 'Active Bank Desk Mismatch',
+          reasonDesc: `This statement belongs to saved account "${otherBank.name} (${otherBank.accNo || displayAcc(otherBank.fullAccNo)})", but your current active desk is "${activeBank.name} (${activeBank.accNo || displayAcc(activeBank.fullAccNo)})". Statements must be uploaded directly to their respective bank desk to avoid ledger contamination.`,
+          guidance: `Switch to the "${otherBank.name}" desk to upload this statement, or select the statement matching "${activeBank.name}".`,
+          suggestedBank: otherBank,
+          actionLabel: `Switch to ${otherBank.name} Desk`,
+          actionType: 'switch_desk',
+          active: activeDisplay,
+          detected: {
+            name: otherBank.name,
+            accNo: detectedDisplay.accNo,
+            ifsc: extracted.ifsc || otherBank.ifsc || '—',
+            fileName: detectedDisplay.fileName
+          }
+        };
+      } else {
+        // Account does not belong to ANY saved bank
+        return {
+          valid: false,
+          type: 'unregistered_account',
+          reasonTitle: 'Unregistered Bank Account',
+          reasonDesc: `The statement is for Account #${extracted.fullAccNo}${detectedBrand ? ` (${detectedBrand.name})` : ''}, which is not registered in your corporate bank accounts. Auto-detection is disabled.`,
+          guidance: `Please add this account to your Corporate Bank Accounts via "+ Add Bank Account" before uploading statements.`,
+          actionLabel: detectedBrand ? `+ Add ${detectedBrand.name} Account` : '+ Add Bank Account',
+          actionType: 'add_bank',
+          suggestedNewBank: {
+            name: detectedBrand ? detectedBrand.name : (extracted.name || ''),
+            fullAccNo: extracted.fullAccNo || '',
+            ifsc: extracted.ifsc || (detectedBrand ? detectedBrand.defaultIfsc : '')
+          },
+          active: activeDisplay,
+          detected: detectedDisplay
+        };
+      }
+    }
+  }
+
+  // CHECK 2: Bank Brand / Bank Name
+  if (detectedBrand) {
+    const activeMatchesBrand = bankMatchesBrandDef(activeBank, detectedBrand);
+    if (!activeMatchesBrand) {
+      // Check if another saved bank matches this brand
+      const otherBank = corporateBanks.find(b => b.id !== activeBank.id && bankMatchesBrandDef(b, detectedBrand));
+      if (otherBank) {
+        return {
+          valid: false,
+          type: 'desk_mismatch',
+          reasonTitle: 'Active Bank Desk Mismatch',
+          reasonDesc: `The uploaded statement is from ${detectedBrand.name}, but your current active desk is ${activeBank.name} (${activeBank.accNo || displayAcc(activeBank.fullAccNo)}). Each bank statement must be uploaded to its corresponding bank desk.`,
+          guidance: `Switch to your "${otherBank.name}" desk to upload this statement, or select an ${activeBank.name} statement file.`,
+          suggestedBank: otherBank,
+          actionLabel: `Switch to ${otherBank.name} Desk`,
+          actionType: 'switch_desk',
+          active: activeDisplay,
+          detected: {
+            name: otherBank.name,
+            accNo: detectedDisplay.accNo !== '—' ? detectedDisplay.accNo : (otherBank.accNo || '—'),
+            ifsc: extracted.ifsc || otherBank.ifsc || '—',
+            fileName: detectedDisplay.fileName
+          }
+        };
+      } else {
+        // Brand is completely unsaved in corporateBanks
+        return {
+          valid: false,
+          type: 'unregistered_bank',
+          reasonTitle: 'Unregistered Corporate Bank',
+          reasonDesc: `Detected ${detectedBrand.name} statement, but ${detectedBrand.name} is not in your saved Corporate Banks. Auto-detection is disabled to prevent accidental account creation.`,
+          guidance: `Please register this bank account first via "+ Add Bank Account" before uploading statements.`,
+          actionLabel: `+ Add ${detectedBrand.name} Account`,
+          actionType: 'add_bank',
+          suggestedNewBank: {
+            name: detectedBrand.name,
+            fullAccNo: extracted.fullAccNo || '',
+            ifsc: extracted.ifsc || detectedBrand.defaultIfsc || ''
+          },
+          active: activeDisplay,
+          detected: detectedDisplay
+        };
+      }
+    }
+  }
+
+  // CHECK 3: IFSC Code conflict
+  if (extracted.ifsc && activeBank.ifsc) {
+    const detectedPrefix = extracted.ifsc.slice(0, 4).toUpperCase();
+    const activePrefix = activeBank.ifsc.slice(0, 4).toUpperCase();
+    if (detectedPrefix !== activePrefix) {
+      const otherBank = corporateBanks.find(b => b.id !== activeBank.id && b.ifsc && b.ifsc.slice(0, 4).toUpperCase() === detectedPrefix);
+      if (otherBank) {
+        return {
+          valid: false,
+          type: 'desk_mismatch',
+          reasonTitle: 'Active Bank Desk Mismatch (IFSC)',
+          reasonDesc: `Statement IFSC (${extracted.ifsc}) indicates ${otherBank.name}, which conflicts with active desk ${activeBank.name} (${activeBank.ifsc}).`,
+          guidance: `Switch to ${otherBank.name} desk before uploading this file.`,
+          suggestedBank: otherBank,
+          actionLabel: `Switch to ${otherBank.name} Desk`,
+          actionType: 'switch_desk',
+          active: activeDisplay,
+          detected: detectedDisplay
+        };
+      } else {
+        return {
+          valid: false,
+          type: 'unregistered_bank',
+          reasonTitle: 'Unregistered Bank IFSC',
+          reasonDesc: `Statement IFSC (${extracted.ifsc}) does not match active bank ${activeBank.name} (${activeBank.ifsc}) or any saved bank. Auto-detect is disabled.`,
+          guidance: `Register this bank account first via "+ Add Bank Account".`,
+          actionLabel: '+ Add Bank Account',
+          actionType: 'add_bank',
+          suggestedNewBank: {
+            name: extracted.name || '',
+            fullAccNo: extracted.fullAccNo || '',
+            ifsc: extracted.ifsc
+          },
+          active: activeDisplay,
+          detected: detectedDisplay
+        };
+      }
+    }
+  }
+
+  // CHECK 4: Completely unidentified statement
+  if (!detectedBrand && !extracted.fullAccNo && !extracted.ifsc && !extracted.name) {
+    const activeNameLower = (activeBank.name || '').toLowerCase();
+    const activeIdLower = (activeBank.id || '').toLowerCase();
+    const fileNameLower = (fileName || '').toLowerCase();
+    const hasActiveBrandInFileName = activeNameLower.split(/\s+/).some(part => part.length >= 4 && fileNameLower.includes(part)) ||
+      fileNameLower.includes(activeIdLower.split('-')[0]);
+
+    if (!hasActiveBrandInFileName) {
+      return {
+        valid: false,
+        type: 'unverified_statement',
+        reasonTitle: 'Unverified Bank Statement',
+        reasonDesc: `This file does not contain a recognizable bank name, account number, or IFSC matching your active desk "${activeBank.name}". Auto-detect is disabled.`,
+        guidance: `Please verify that this is a valid bank statement file for ${activeBank.name}, or include standard bank headers (Account No, IFSC, or Bank Name).`,
+        actionLabel: 'Dismiss & Reject File',
+        actionType: 'dismiss',
+        active: activeDisplay,
+        detected: detectedDisplay
+      };
+    }
+  }
+
+  // Passed all checks! Matches active bank desk.
+  return {
+    valid: true,
+    bank: activeBank,
+    extracted
+  };
 }
+
+let currentRejectionAction = null;
+
+function showStatementRejectionPopup(rejection) {
+  if (!statementRejectionModal) return;
+
+  const getEl = (id) => document.getElementById(id);
+  const reasonTitleEl = getEl('rejectionReasonTitle');
+  const reasonDescEl = getEl('rejectionReasonDesc');
+  const activeNameEl = getEl('rejectionActiveBankName');
+  const activeAccEl = getEl('rejectionActiveAcc');
+  const activeIfscEl = getEl('rejectionActiveIfsc');
+  const detNameEl = getEl('rejectionDetectedBankName');
+  const detAccEl = getEl('rejectionDetectedAcc');
+  const detIfscEl = getEl('rejectionDetectedIfsc');
+  const detFileEl = getEl('rejectionFileName');
+  const guidanceEl = getEl('rejectionGuidanceText');
+
+  if (reasonTitleEl) reasonTitleEl.textContent = rejection.reasonTitle || 'Bank Verification Failed';
+  if (reasonDescEl) reasonDescEl.textContent = rejection.reasonDesc || 'The uploaded statement does not match the active bank desk.';
+
+  if (activeNameEl) activeNameEl.textContent = (rejection.active && rejection.active.name) || 'Active Bank';
+  if (activeAccEl) activeAccEl.textContent = (rejection.active && rejection.active.accNo) || '—';
+  if (activeIfscEl) activeIfscEl.textContent = (rejection.active && rejection.active.ifsc) || '—';
+
+  if (detNameEl) detNameEl.textContent = (rejection.detected && rejection.detected.name) || 'Unidentified Bank';
+  if (detAccEl) detAccEl.textContent = (rejection.detected && rejection.detected.accNo) || '—';
+  if (detIfscEl) detIfscEl.textContent = (rejection.detected && rejection.detected.ifsc) || '—';
+  if (detFileEl) {
+    detFileEl.textContent = (rejection.detected && rejection.detected.fileName) || 'statement.csv';
+    detFileEl.title = (rejection.detected && rejection.detected.fileName) || '';
+  }
+
+  if (guidanceEl) guidanceEl.textContent = rejection.guidance || 'Please switch to the matching bank desk or register this bank account first.';
+
+  if (rejectionActionBtn) {
+    if (rejection.actionLabel && rejection.actionType && rejection.actionType !== 'dismiss') {
+      rejectionActionBtn.style.display = 'inline-flex';
+      rejectionActionBtn.textContent = rejection.actionLabel;
+
+      if (rejection.actionType === 'switch_desk' && rejection.suggestedBank) {
+        currentRejectionAction = () => {
+          closeStatementRejectionPopup(false);
+          const targetBank = rejection.suggestedBank;
+          selectedBankId = targetBank.id;
+          if (targetBank.sheets && targetBank.sheets.length > 0) {
+            selectedMonthId = targetBank.sheets[0].monthId;
+          } else {
+            selectedMonthId = '';
+          }
+          activeConfirmingRowId = null;
+          renderAll(false);
+          showToast(`Switched to ${targetBank.name} desk. You can now upload statements here.`, 'info');
+        };
+      } else if (rejection.actionType === 'add_bank') {
+        currentRejectionAction = () => {
+          closeStatementRejectionPopup(false);
+          if (typeof openAddBankModal === 'function') {
+            openAddBankModal();
+            const sug = rejection.suggestedNewBank;
+            if (sug) {
+              const nameIn = document.getElementById('bankNameInput');
+              const accIn = document.getElementById('bankAccInput');
+              const ifscIn = document.getElementById('bankIfscInput');
+              if (nameIn && sug.name) nameIn.value = sug.name;
+              if (accIn && sug.fullAccNo) accIn.value = sug.fullAccNo;
+              if (ifscIn && sug.ifsc) ifscIn.value = sug.ifsc;
+            }
+          }
+        };
+      } else {
+        currentRejectionAction = null;
+        rejectionActionBtn.style.display = 'none';
+      }
+    } else {
+      rejectionActionBtn.style.display = 'none';
+      currentRejectionAction = null;
+    }
+  }
+
+  statementRejectionModal.style.display = 'flex';
+}
+
+function closeStatementRejectionPopup(isDismiss = false) {
+  if (statementRejectionModal) {
+    statementRejectionModal.style.display = 'none';
+  }
+  if (bankCsvInput) {
+    try { bankCsvInput.value = ''; } catch (e) {}
+  }
+  if (isDismiss) {
+    showToast('Statement upload rejected. No ledger entries were modified.', 'amber');
+  }
+  currentRejectionAction = null;
+}
+
 
 function detectMonthFromCsvLines(lines) {
   const monthCounts = {};
@@ -2835,13 +3188,16 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
   }
 
   if (isGstOrSalesRegisterFile(fileName, csvText)) {
-    showToast('Detected a sales / GST register — saving as customer invoices.', 'info');
+    showToast('Detected sales register / book — importing as customer invoices.', 'info');
     await processInvoiceCsv(csvText);
+    switchView('invoices');
     return;
   }
   if (isPurchaseRegister(fileName, csvText)) {
-    showToast('Detected a purchase register — saving as vendor bills.', 'info');
+    showToast('Detected purchase register / book — importing as vendor bills.', 'info');
     await processVendorBillCsv(csvText);
+    switchView('bank-statements');
+    switchMappingMode('debit');
     return;
   }
 
@@ -2851,9 +3207,20 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
     return;
   }
 
-  const detectionResult = detectBankFromCsv(csvText, fileName, options);
-  const bank = detectionResult.bank;
+  // STRICT VALIDATION: Check whether the present bank statement matches the active corporate bank desk
+  const validation = validateStatementMatchesSavedBank(csvText, fileName, options);
+  if (!validation.valid) {
+    if (bankCsvInput) {
+      try { bankCsvInput.value = ''; } catch (e) {}
+    }
+    showStatementRejectionPopup(validation);
+    return;
+  }
+
+  const bank = validation.bank;
+  const detectionResult = { bank, isNew: false, confidence: 'high', reason: 'Verified matching active bank desk', extracted: validation.extracted };
   if (!bank.sheets) bank.sheets = [];
+
 
   const existingCreditSet = new Set();
   const existingDebitSet = new Set();
@@ -3450,30 +3817,95 @@ async function processInvoiceCsv(csvText) {
   const delimiter = detectCsvDelimiter(csvText);
   const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length <= 1) {
-    showToast('CSV file is empty or missing data rows', 'amber');
+    showToast('Sales book / CSV file is empty or missing data rows', 'amber');
     return;
   }
 
-  // Column header auto-discovery with scoring
+  // Column header auto-discovery with scoring across up to 50 lines (supporting Tally, Marg ERP, Busy, SAP)
   let headerIndex = -1;
-  let invNoCol = -1, custCol = -1, amtCol = -1, dateCol = -1, catCol = -1;
+  let invNoCol = -1, custCol = -1, amtCol = -1, dateCol = -1, catCol = -1, gCol = -1;
 
-  for (let i = 0; i < Math.min(lines.length, 15); i++) {
-    if (isSummaryOrFooterLine(lines[i])) continue;
+  for (let i = 0; i < Math.min(lines.length, 50); i++) {
+    const lineLower = lines[i].toLowerCase();
     const rawCols = parseCsvLine(lines[i], delimiter).map(c => c.trim().toLowerCase().replace(/[_\-\/\.\(\)\s]+/g, ' '));
-    const iIdx = rawCols.findIndex(c => c === 'invoice' || c === 'inv' || c === 'invoice no' || c === 'inv no' || c === 'bill no' || c === 'vch no' || c === 'voucher no' || c === 'doc no' || c.includes('inv') || c.includes('bill no'));
-    const cIdx = rawCols.findIndex(c => c === 'customer' || c === 'party' || c === 'party name' || c === 'customer name' || c === 'client' || c === 'guest' || c === 'particulars' || c.includes('customer') || c.includes('party') || c.includes('name'));
-    const aIdx = rawCols.findIndex(c => c === 'amount' || c === 'amt' || c === 'total' || c === 'net total' || c === 'gross total' || c === 'net amount' || c === 'invoice value' || c.includes('amount') || c.includes('total'));
-    const dIdx = rawCols.findIndex(c => c === 'date' || c === 'dt' || c === 'inv date' || c === 'invoice date' || c === 'vch date' || c.includes('date'));
-    const kIdx = rawCols.findIndex(c => c === 'category' || c === 'type' || c === 'vch type' || c === 'voucher type' || c.includes('category') || c.includes('type'));
 
-    if (iIdx !== -1 || (cIdx !== -1 && aIdx !== -1) || (dIdx !== -1 && aIdx !== -1)) {
+    // Skip pure report title or pagination metadata rows
+    if (lineLower.startsWith('sales register for period') || lineLower.startsWith('statement period') || lineLower.startsWith('page ')) {
+      continue;
+    }
+
+    const iIdx = rawCols.findIndex(c =>
+      c === 'invoice' || c === 'inv' || c === 'invoice no' || c === 'inv no' || c === 'bill no' ||
+      c === 'vch no' || c === 'voucher no' || c === 'doc no' || c === 'vch number' || c === 'voucher number' ||
+      c === 'bill number' || c === 'inv number' || c === 'ref no' || c === 'reference no' ||
+      c.includes('invoice no') || c.includes('inv no') || c.includes('bill no') || c.includes('vch no') ||
+      c.includes('voucher no') || c === 'invoice #' || c === 'inv #' || c === 'bill #' || c === 'tax invoice no'
+    );
+
+    const cIdx = rawCols.findIndex(c =>
+      c === 'customer' || c === 'party' || c === 'party name' || c === 'customer name' ||
+      c === 'client' || c === 'guest' || c === 'particulars' || c === 'party particulars' ||
+      c === 'buyer' || c === 'buyer name' || c === 'consignee' || c === 'consignee name' ||
+      c === 'account name' || c === 'ledger name' || c === 'debtor' ||
+      c.includes('customer') || c.includes('party') || c.includes('particulars') || c.includes('buyer') || c.includes('consignee') || (c.includes('name') && !c.includes('item') && !c.includes('product') && !c.includes('user'))
+    );
+
+    const dIdx = rawCols.findIndex(c =>
+      c === 'date' || c === 'dt' || c === 'inv date' || c === 'invoice date' || c === 'vch date' ||
+      c === 'voucher date' || c === 'bill date' || c === 'doc date' || c.includes('date')
+    );
+
+    const gIdx = rawCols.findIndex(c =>
+      c === 'gstin' || c === 'gstin uin' || c === 'gstin/uin' || c === 'gst no' || c === 'gst number' ||
+      c.includes('gstin') || c.includes('gst no')
+    );
+
+    const kIdx = rawCols.findIndex(c =>
+      (c === 'category' || c === 'division' || c === 'vch type' || c === 'voucher type' || c === 'type') &&
+      !c.includes('amount') && !c.includes('date')
+    );
+
+    // Prioritized Amount column in pharma sales register: Net Total / Bill Amt > Debit > Gross > Generic > Taxable
+    let aIdx = rawCols.findIndex(c =>
+      c === 'net amount' || c === 'net amt' || c === 'bill amount' || c === 'bill amt' ||
+      c === 'total amount' || c === 'total amt' || c === 'net total' || c === 'invoice value' ||
+      c === 'inv value' || c === 'invoice total' || c === 'grand total' || c === 'final amount' ||
+      c === 'total bill amt' || c === 'total value' || c === 'total' || c === 'net'
+    );
+    if (aIdx === -1) {
+      // Tally Columnar Sales Register standard: Debit column
+      aIdx = rawCols.findIndex(c =>
+        c === 'debit' || c === 'debit amount' || c === 'debit amt' || c === 'dr amount' ||
+        c === 'dr amt' || c === 'debit rs' || c === 'dr rs' || c === 'dr'
+      );
+    }
+    if (aIdx === -1) {
+      aIdx = rawCols.findIndex(c =>
+        c === 'gross total' || c === 'gross amount' || c === 'gross amt' || c === 'gross value' || c === 'gross'
+      );
+    }
+    if (aIdx === -1) {
+      aIdx = rawCols.findIndex(c =>
+        (c === 'amount' || c === 'amt' || c === 'value' || c.includes('amount') || c.includes('total')) &&
+        !c.includes('tax') && !c.includes('cgst') && !c.includes('sgst') && !c.includes('igst') &&
+        !c.includes('cess') && !c.includes('tds') && !c.includes('tcs') && !c.includes('discount') &&
+        !c.includes('round') && !c.includes('paid')
+      );
+    }
+    if (aIdx === -1) {
+      aIdx = rawCols.findIndex(c =>
+        c === 'taxable value' || c === 'taxable amount' || c === 'taxable amt' || c === 'taxable'
+      );
+    }
+
+    if (iIdx !== -1 || (cIdx !== -1 && (aIdx !== -1 || dIdx !== -1)) || (dIdx !== -1 && aIdx !== -1)) {
       headerIndex = i;
       invNoCol = iIdx;
       custCol = cIdx;
       amtCol = aIdx;
       dateCol = dIdx;
       catCol = kIdx;
+      gCol = gIdx;
       break;
     }
   }
@@ -3488,26 +3920,55 @@ async function processInvoiceCsv(csvText) {
     const cols = parseCsvLine(line, delimiter);
     if (cols.length < 2) continue;
 
+    // Detect footer/total row
+    const lineLower = line.toLowerCase();
+    if (lineLower.startsWith('total') || lineLower.startsWith('grand total') || lineLower.startsWith('count ') || lineLower.includes('closing balance')) {
+      continue;
+    }
+
     let invoiceNo = (invNoCol >= 0 && cols[invNoCol]) ? cols[invNoCol].trim() : '';
     if (!invoiceNo) {
-      const ifbCol = cols.find(c => /\bIFB\d{4,}\b/i.test(c));
-      invoiceNo = ifbCol ? (ifbCol.match(/\bIFB\d{4,}\b/i)[0].toUpperCase()) : (cols[0] || `INV-${Date.now()}-${i}`);
+      const ifbCol = cols.find(c => /\bIFB[-_\s]?\d{3,}\b/i.test(c));
+      invoiceNo = ifbCol ? (ifbCol.match(/\bIFB[-_\s]?\d{3,}\b/i)[0].toUpperCase()) : (cols[0] || `INV-${Date.now()}-${i}`);
     }
+
     const customer = (custCol >= 0 && cols[custCol]) ? cols[custCol].trim() : (cols[1] || 'Corporate Client');
-    let amount = parseAmount(amtCol >= 0 ? cols[amtCol] : '');
     const date = (dateCol >= 0 && cols[dateCol]) ? cols[dateCol].trim() : (cols.find(c => isValidTransactionDate(c)) || '19 Sep 2026');
-    const category = (catCol >= 0 && cols[catCol]) ? cols[catCol].trim() : (cols[4] || 'Regular B2B Tax Invoice');
 
-    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date) || isDateLikeValue(amtCol >= 0 ? cols[amtCol] : '')) {
-      amount = findPlausibleAmountInRow(cols, [dateCol, invNoCol, custCol]);
+    let gstin = (gCol >= 0 && cols[gCol]) ? cols[gCol].trim().toUpperCase() : '';
+    if (!gstin) {
+      const gMatch = cols.find(c => /\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/i.test(c));
+      if (gMatch) gstin = gMatch.match(/\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/i)[0].toUpperCase();
     }
-    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date)) continue;
-    if (isDateLikeValue(invoiceNo) || /^\d{1,3}$/.test(invoiceNo)) continue;
 
-    if (!appInvoices.some(inv => inv.invoiceNo.toLowerCase() === invoiceNo.toLowerCase())) {
+    let category = (catCol >= 0 && cols[catCol]) ? cols[catCol].trim() : '';
+    if (!category || !isNaN(parseFloat(category)) || category.length < 2) {
+      category = 'General Pharma Supply';
+    }
+
+    // Extract amount: prioritize detected amount column, fall back to max plausible monetary value in row
+    let amount = amtCol >= 0 ? Math.abs(parseAmount(cols[amtCol])) : 0;
+    if (!isPlausibleMoneyAmount(amount) || amountLooksLikeDateDigits(amount, date) || isDateLikeValue(amtCol >= 0 ? cols[amtCol] : '')) {
+      amount = findMaxPlausibleAmountInRow(cols, [dateCol, invNoCol, custCol, gCol]);
+    }
+
+    if (!isPlausibleMoneyAmount(amount)) continue;
+    if (isDateLikeValue(invoiceNo) || /^\d{1,2}$/.test(invoiceNo)) continue;
+
+    // Check for existing invoice
+    const existingIdx = appInvoices.findIndex(inv => inv.invoiceNo.toLowerCase() === invoiceNo.toLowerCase());
+    if (existingIdx !== -1) {
+      // Update with real details if existing had 0 or missing amount
+      if (appInvoices[existingIdx].amount <= 0 && amount > 0) {
+        appInvoices[existingIdx].amount = amount;
+        appInvoices[existingIdx].guestName = customer;
+        if (gstin) appInvoices[existingIdx].gstin = gstin;
+      }
+    } else {
       appInvoices.unshift({
         invoiceNo,
         guestName: customer,
+        gstin,
         amount,
         date,
         category,
@@ -3520,7 +3981,2749 @@ async function processInvoiceCsv(csvText) {
 
   renderAll(false);
   await persistToSupabase();
-  showToast(`Imported ${added} customer invoices from CSV & stored in Supabase DB!`, added > 0 ? 'success' : 'amber');
+  showToast(`Successfully processed sales book: imported ${added} customer invoices into database!`, added > 0 ? 'success' : 'info');
+}
+
+// ---------------------------------------------------------------------------
+// Real-time Reconciliation Settlement Calculation for Invoices
+// ---------------------------------------------------------------------------
+
+function getInvoiceReconciliationData(inv) {
+  if (!inv || !inv.invoiceNo) {
+    return {
+      linkedTransactions: [],
+      settledAmount: 0,
+      balance: 0,
+      percent: 0,
+      status: 'Unreconciled'
+    };
+  }
+
+  const targetNo = String(inv.invoiceNo).trim().toLowerCase();
+  const linked = [];
+
+  (corporateBanks || []).forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      (sheet.records || []).forEach(row => {
+        if (row.status === 'mapped' && row.mapping) {
+          const mappedDoc = String(row.mapping.invoiceNo || row.mapping.billNo || '').trim().toLowerCase();
+          if (mappedDoc === targetNo) {
+            linked.push({
+              bankId: bank.id,
+              bankName: bank.name,
+              bankAccNo: bank.accNo,
+              monthId: sheet.id,
+              monthName: sheet.month,
+              rowId: row.id,
+              date: row.date,
+              amount: parseFloat(row.amount) || 0,
+              narration: row.narration || '',
+              bankRef: row.bankRef || '',
+              type: row.type || 'TRANSFER',
+              mappedAt: row.mapping.mappedAt || '',
+              mappedBy: row.mapping.mappedBy || 'Accounts Controller'
+            });
+          }
+        }
+      });
+    });
+  });
+
+  const invAmount = Math.max(0, parseFloat(inv.amount) || 0);
+  const totalSettled = linked.reduce((sum, item) => sum + item.amount, 0);
+  const balance = Math.max(0, invAmount - totalSettled);
+  const percent = invAmount > 0 ? Math.min(100, Math.round((totalSettled / invAmount) * 100)) : (totalSettled > 0 ? 100 : 0);
+
+  let status = 'Unreconciled';
+  if (totalSettled >= invAmount && invAmount > 0) {
+    status = 'Reconciled';
+  } else if (totalSettled > 0) {
+    status = 'Partially Paid';
+  } else if (inv.status && (inv.status === 'Reconciled' || inv.status === 'Partially Paid' || inv.status === 'Paid')) {
+    status = inv.status;
+  }
+
+  // Update invoice object properties
+  inv.settledAmount = totalSettled;
+  inv.status = status;
+
+  return {
+    linkedTransactions: linked,
+    settledAmount: totalSettled,
+    balance: balance,
+    percent: percent,
+    status: status
+  };
+}
+
+function updateInvoicesBadge() {
+  const badge = document.getElementById('navInvoicesBadge');
+  if (badge) {
+    badge.textContent = String(appInvoices.length);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Render Customer Invoices Desk
+// ---------------------------------------------------------------------------
+
+function renderInvoicesView() {
+  const tableBody = document.getElementById('invoicesTableBody');
+  const emptyState = document.getElementById('invoicesEmptyState');
+  const tableFooter = document.getElementById('invoicesTableFooter');
+  if (!tableBody) return;
+
+  updateInvoicesBadge();
+
+  // 1. Calculate KPI Metrics & Filter Counts
+  let totalInvoicedSum = 0;
+  let totalSettledSum = 0;
+  let totalPendingSum = 0;
+  let countReconciled = 0;
+  let countPartial = 0;
+  let countUnreconciled = 0;
+
+  const invoiceDataList = appInvoices.map(inv => {
+    const recon = getInvoiceReconciliationData(inv);
+    const amt = parseFloat(inv.amount) || 0;
+    totalInvoicedSum += amt;
+    totalSettledSum += recon.settledAmount;
+    totalPendingSum += recon.balance;
+
+    if (recon.status === 'Reconciled') {
+      countReconciled++;
+    } else if (recon.status === 'Partially Paid') {
+      countPartial++;
+    } else {
+      countUnreconciled++;
+    }
+
+    return {
+      inv,
+      recon
+    };
+  });
+
+  // Update KPI Cards
+  const invTotalValueEl = document.getElementById('invTotalValue');
+  const invTotalCountSubEl = document.getElementById('invTotalCountSub');
+  const invSettledValueEl = document.getElementById('invSettledValue');
+  const invSettledRateSubEl = document.getElementById('invSettledRateSub');
+  const invPendingValueEl = document.getElementById('invPendingValue');
+  const invPendingCountSubEl = document.getElementById('invPendingCountSub');
+  const invMatchRateEl = document.getElementById('invMatchRate');
+  const invMatchCountSubEl = document.getElementById('invMatchCountSub');
+
+  if (invTotalValueEl) invTotalValueEl.textContent = formatINR(totalInvoicedSum);
+  if (invTotalCountSubEl) invTotalCountSubEl.textContent = `${appInvoices.length} invoices registered`;
+  if (invSettledValueEl) invSettledValueEl.textContent = formatINR(totalSettledSum);
+  const settledPct = totalInvoicedSum > 0 ? ((totalSettledSum / totalInvoicedSum) * 100).toFixed(1) : '0.0';
+  if (invSettledRateSubEl) invSettledRateSubEl.textContent = `${settledPct}% collected via bank credits`;
+  if (invPendingValueEl) invPendingValueEl.textContent = formatINR(totalPendingSum);
+  if (invPendingCountSubEl) invPendingCountSubEl.textContent = `${countPartial + countUnreconciled} invoices pending collection`;
+  if (invMatchRateEl) invMatchRateEl.textContent = `${settledPct}%`;
+  if (invMatchCountSubEl) invMatchCountSubEl.textContent = `${countReconciled} of ${appInvoices.length} fully reconciled`;
+
+  // Update Filter Counts Badges
+  const filterCountAll = document.getElementById('invFilterCountAll');
+  const filterCountReconciled = document.getElementById('invFilterCountReconciled');
+  const filterCountPartial = document.getElementById('invFilterCountPartial');
+  const filterCountUnreconciled = document.getElementById('invFilterCountUnreconciled');
+  if (filterCountAll) filterCountAll.textContent = String(appInvoices.length);
+  if (filterCountReconciled) filterCountReconciled.textContent = String(countReconciled);
+  if (filterCountPartial) filterCountPartial.textContent = String(countPartial);
+  if (filterCountUnreconciled) filterCountUnreconciled.textContent = String(countUnreconciled);
+
+  // 2. Filter & Search
+  const query = (invoicesSearch || '').toLowerCase().trim();
+  let displayed = invoiceDataList.filter(({ inv, recon }) => {
+    // Filter by tab
+    if (invoicesFilter === 'reconciled' && recon.status !== 'Reconciled') return false;
+    if (invoicesFilter === 'partial' && recon.status !== 'Partially Paid') return false;
+    if (invoicesFilter === 'unreconciled' && recon.status !== 'Unreconciled') return false;
+
+    // Filter by query
+    if (query) {
+      const matchInvNo = (inv.invoiceNo || '').toLowerCase().includes(query);
+      const matchCust = (inv.guestName || '').toLowerCase().includes(query);
+      const matchCat = (inv.category || '').toLowerCase().includes(query);
+      const matchGstin = (inv.gstin || '').toLowerCase().includes(query);
+      const matchAmount = String(inv.amount || '').includes(query);
+      const matchStatus = recon.status.toLowerCase().includes(query);
+      if (!matchInvNo && !matchCust && !matchCat && !matchGstin && !matchAmount && !matchStatus) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // 3. Sort
+  displayed.sort((a, b) => {
+    if (invoicesSort === 'amount-desc') {
+      return (parseFloat(b.inv.amount) || 0) - (parseFloat(a.inv.amount) || 0);
+    }
+    if (invoicesSort === 'amount-asc') {
+      return (parseFloat(a.inv.amount) || 0) - (parseFloat(b.inv.amount) || 0);
+    }
+    if (invoicesSort === 'invoice-asc') {
+      return (a.inv.invoiceNo || '').localeCompare(b.inv.invoiceNo || '');
+    }
+    if (invoicesSort === 'customer-asc') {
+      return (a.inv.guestName || '').localeCompare(b.inv.guestName || '');
+    }
+    if (invoicesSort === 'date-asc') {
+      return new Date(a.inv.date || 0) - new Date(b.inv.date || 0);
+    }
+    // date-desc default
+    return new Date(b.inv.date || 0) - new Date(a.inv.date || 0);
+  });
+
+  // 4. Render Table
+  tableBody.innerHTML = '';
+  if (displayed.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (tableFooter) tableFooter.style.display = 'none';
+    const emptyDesc = document.getElementById('invoicesEmptyDesc');
+    if (emptyDesc) {
+      if (appInvoices.length === 0) {
+        emptyDesc.textContent = 'No customer invoices in the database yet. Click "+ Add Invoice" or "Import CSV" to register real sales invoices.';
+      } else {
+        emptyDesc.textContent = `No invoices match your search query "${query}" or filter.`;
+      }
+    }
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (tableFooter) tableFooter.style.display = 'flex';
+
+  let filteredTotalSum = 0;
+  let filteredSettledSum = 0;
+  let filteredBalanceSum = 0;
+
+  displayed.forEach(({ inv, recon }) => {
+    const tr = document.createElement('tr');
+    tr.id = `inv-row-${encodeURIComponent(inv.invoiceNo)}`;
+
+    const amt = parseFloat(inv.amount) || 0;
+    const settled = recon.settledAmount;
+    const balance = recon.balance;
+
+    filteredTotalSum += amt;
+    filteredSettledSum += settled;
+    filteredBalanceSum += balance;
+
+    // Progress bar fill class
+    let fillClass = 'fill-slate';
+    if (recon.status === 'Reconciled') fillClass = 'fill-green';
+    else if (recon.status === 'Partially Paid') fillClass = 'fill-amber';
+
+    // Status pill HTML
+    let statusPillHtml = '';
+    if (recon.status === 'Reconciled') {
+      statusPillHtml = `<span class="status-pill-reconciled"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Reconciled</span>`;
+    } else if (recon.status === 'Partially Paid') {
+      statusPillHtml = `<span class="status-pill-partial"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-right:2px;"></span> ${recon.percent}% Paid</span>`;
+    } else {
+      statusPillHtml = `<span class="status-pill-unreconciled"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;margin-right:2px;"></span> Awaiting Credit</span>`;
+    }
+
+    // Bank Evidence HTML
+    let evidenceHtml = '';
+    if (recon.linkedTransactions.length > 0) {
+      const first = recon.linkedTransactions[0];
+      const count = recon.linkedTransactions.length;
+      evidenceHtml = `
+        <button type="button" class="bank-evidence-pill" data-inv="${escapeHtml(inv.invoiceNo)}" title="View linked bank transactions (${count} credits mapped)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          <span>${escapeHtml(first.bankName.replace(' Bank', ''))}: ${formatINR(first.amount)}${count > 1 ? ` (+${count - 1})` : ''}</span>
+        </button>
+      `;
+    } else {
+      evidenceHtml = `
+        <button type="button" class="btn-quick-reconcile" data-inv="${escapeHtml(inv.invoiceNo)}" data-cust="${escapeHtml(inv.guestName)}" title="Open Bank Statements Credit Desk to match this invoice">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <span>Match in Desk &rarr;</span>
+        </button>
+      `;
+    }
+
+    tr.innerHTML = `
+      <td>
+        <span class="inv-num-pill" data-action="view" data-inv="${escapeHtml(inv.invoiceNo)}" title="Click to view invoice details">
+          ${escapeHtml(inv.invoiceNo)}
+        </span>
+      </td>
+      <td>
+        <span class="inv-date-text">${escapeHtml(inv.date || '—')}</span>
+      </td>
+      <td class="inv-customer-col">
+        <div class="inv-customer-name">${escapeHtml(inv.guestName || 'Corporate Client')}</div>
+        <div class="inv-customer-meta">
+          <span class="inv-category-pill">${escapeHtml(inv.category || 'Pharma Supply')}</span>
+          ${inv.gstin ? `<span class="font-mono" style="font-size: 10.5px;">GSTIN: ${escapeHtml(inv.gstin)}</span>` : ''}
+        </div>
+      </td>
+      <td class="font-mono font-bold text-right" style="font-size: 13px;">
+        ${formatINR(amt)}
+      </td>
+      <td class="text-right">
+        <div class="inv-settlement-wrap">
+          <span class="font-mono font-bold ${settled > 0 ? 'text-success' : 'text-muted'}" style="${settled > 0 ? 'color: #059669;' : ''}">${formatINR(settled)}</span>
+          <div class="inv-progress-track" title="${recon.percent}% settled">
+            <div class="inv-progress-fill ${fillClass}" style="width: ${recon.percent}%;"></div>
+          </div>
+        </div>
+      </td>
+      <td class="font-mono font-bold text-right" style="color: ${balance > 0 ? '#d97706' : 'var(--text-muted)'};">
+        ${formatINR(balance)}
+      </td>
+      <td>
+        ${statusPillHtml}
+      </td>
+      <td>
+        ${evidenceHtml}
+      </td>
+      <td>
+        <div class="table-actions-cell">
+          <button type="button" class="btn-table-action" data-action="view" data-inv="${escapeHtml(inv.invoiceNo)}" title="View details & audit trail">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </button>
+          <button type="button" class="btn-table-action" data-action="edit" data-inv="${escapeHtml(inv.invoiceNo)}" title="Edit invoice">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          </button>
+          <button type="button" class="btn-table-action action-delete" data-action="delete" data-inv="${escapeHtml(inv.invoiceNo)}" title="Delete invoice">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
+      </td>
+    `;
+
+    // Bind item events
+    tr.querySelectorAll('[data-action="view"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openInvoiceDetailsModal(inv);
+      });
+    });
+
+    tr.querySelectorAll('[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditInvoiceModal(inv);
+      });
+    });
+
+    tr.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        confirmDeleteInvoice(inv);
+      });
+    });
+
+    tr.querySelectorAll('.bank-evidence-pill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openInvoiceDetailsModal(inv);
+      });
+    });
+
+    tr.querySelectorAll('.btn-quick-reconcile').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        quickJumpToReconcile(inv);
+      });
+    });
+
+    tableBody.appendChild(tr);
+  });
+
+  // Update Footer totals
+  const footerCount = document.getElementById('invoicesFooterCount');
+  const footerSum = document.getElementById('invoicesFooterSum');
+  const footerSettled = document.getElementById('invoicesFooterSettled');
+  const footerBalance = document.getElementById('invoicesFooterBalance');
+  if (footerCount) footerCount.textContent = `Showing ${displayed.length} of ${appInvoices.length} invoices`;
+  if (footerSum) footerSum.textContent = formatINR(filteredTotalSum);
+  if (footerSettled) footerSettled.textContent = formatINR(filteredSettledSum);
+  if (footerBalance) footerBalance.textContent = formatINR(filteredBalanceSum);
+}
+
+// ---------------------------------------------------------------------------
+// Invoice Details, Add/Edit & Action Modals
+// ---------------------------------------------------------------------------
+
+function openInvoiceDetailsModal(inv) {
+  if (!inv) return;
+  const modal = document.getElementById('invoiceDetailsModal');
+  const title = document.getElementById('invDetailTitle');
+  const body = document.getElementById('invoiceDetailsBody');
+  const editBtn = document.getElementById('invDetailEditBtn');
+  const deleteBtn = document.getElementById('invDetailDeleteBtn');
+  if (!modal || !body) return;
+
+  const recon = getInvoiceReconciliationData(inv);
+  if (title) title.textContent = `Invoice ${inv.invoiceNo}`;
+
+  let evidenceRowsHtml = '';
+  if (recon.linkedTransactions.length > 0) {
+    evidenceRowsHtml = recon.linkedTransactions.map(tx => `
+      <tr>
+        <td>
+          <div style="font-weight: 600;">${escapeHtml(tx.bankName)}</div>
+          <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(tx.bankAccNo)} · ${escapeHtml(tx.monthName || '')}</div>
+        </td>
+        <td>${escapeHtml(tx.date)}</td>
+        <td class="font-mono font-bold text-success" style="color: #059669;">${formatINR(tx.amount)}</td>
+        <td>
+          <div class="font-mono" style="font-size: 11px;">${escapeHtml(tx.bankRef || '—')}</div>
+          <div style="font-size: 11px; color: var(--text-secondary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(tx.narration || '')}</div>
+        </td>
+        <td>
+          <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(tx.mappedBy || 'Controller')}</span>
+        </td>
+        <td style="text-align: right;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="jumpToStatementRow('${escapeHtml(tx.bankId)}', '${escapeHtml(tx.monthId)}', '${escapeHtml(tx.rowId)}')">
+            View Row &rarr;
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    evidenceRowsHtml = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+          No bank statement credits matched yet. 
+          <button type="button" class="btn btn-outline btn-sm" style="margin-left: 8px;" onclick="quickJumpToReconcileByNo('${escapeHtml(inv.invoiceNo)}')">
+            Match in Desk &rarr;
+          </button>
+        </td>
+      </tr>
+    `;
+  }
+
+  body.innerHTML = `
+    <!-- Top KPI Highlights -->
+    <div class="inv-detail-kpis">
+      <div class="inv-detail-kpi-card">
+        <div class="inv-detail-kpi-label">INVOICED AMOUNT</div>
+        <div class="inv-detail-kpi-val">${formatINR(inv.amount)}</div>
+      </div>
+      <div class="inv-detail-kpi-card">
+        <div class="inv-detail-kpi-label">SETTLED VIA BANK CREDITS</div>
+        <div class="inv-detail-kpi-val" style="color: #059669;">${formatINR(recon.settledAmount)}</div>
+      </div>
+      <div class="inv-detail-kpi-card">
+        <div class="inv-detail-kpi-label">OUTSTANDING BALANCE</div>
+        <div class="inv-detail-kpi-val" style="color: ${recon.balance > 0 ? '#d97706' : 'var(--text-muted)'};">${formatINR(recon.balance)}</div>
+      </div>
+    </div>
+
+    <!-- Metadata Grid -->
+    <div class="inv-detail-meta-grid">
+      <div class="inv-meta-item">
+        <label>Customer / Buyer</label>
+        <span>${escapeHtml(inv.guestName || 'Corporate Client')}</span>
+      </div>
+      <div class="inv-meta-item">
+        <label>Invoice Date</label>
+        <span>${escapeHtml(inv.date || '—')}</span>
+      </div>
+      <div class="inv-meta-item">
+        <label>Category / Product Batch</label>
+        <span>${escapeHtml(inv.category || 'Pharma Distribution')}</span>
+      </div>
+      <div class="inv-meta-item">
+        <label>Customer GSTIN</label>
+        <span class="font-mono">${escapeHtml(inv.gstin || '—')}</span>
+      </div>
+      <div class="inv-meta-item">
+        <label>Reconciliation Status</label>
+        <div>
+          ${recon.status === 'Reconciled' 
+            ? '<span class="status-pill-reconciled">✓ Fully Reconciled (100%)</span>' 
+            : (recon.status === 'Partially Paid' 
+              ? `<span class="status-pill-partial">${recon.percent}% Partially Paid</span>` 
+              : '<span class="status-pill-unreconciled">Pending Bank Matching</span>')}
+        </div>
+      </div>
+      <div class="inv-meta-item">
+        <label>Settlement Progress</label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="inv-progress-track" style="width: 120px; height: 7px;">
+            <div class="inv-progress-fill ${recon.status === 'Reconciled' ? 'fill-green' : (recon.status === 'Partially Paid' ? 'fill-amber' : 'fill-slate')}" style="width: ${recon.percent}%;"></div>
+          </div>
+          <span class="font-mono font-bold" style="font-size: 11.5px;">${recon.percent}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bank Statement Linkage Evidence -->
+    <div class="inv-evidence-section-title">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      <span>Bank Statement Reconciliation Evidence (${recon.linkedTransactions.length} Credits Linked)</span>
+    </div>
+
+    <div style="overflow-x: auto; border: 1px solid var(--border-default); border-radius: var(--radius-md);">
+      <table class="credit-mapping-table" style="margin: 0;">
+        <thead>
+          <tr>
+            <th>BANK ACCOUNT</th>
+            <th>DATE</th>
+            <th>CREDIT AMT</th>
+            <th>UTR / NARRATION</th>
+            <th>RECONCILED BY</th>
+            <th style="text-align: right;">ACTION</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${evidenceRowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  if (editBtn) {
+    editBtn.onclick = () => {
+      modal.style.display = 'none';
+      openEditInvoiceModal(inv);
+    };
+  }
+
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      modal.style.display = 'none';
+      confirmDeleteInvoice(inv);
+    };
+  }
+
+  modal.style.display = 'flex';
+}
+
+function openAddInvoiceModal() {
+  const modal = document.getElementById('addInvoiceModal');
+  const title = document.getElementById('addInvoiceModalTitle');
+  const sub = document.getElementById('addInvoiceModalSubtitle');
+  const btn = document.getElementById('saveInvoiceSubmitBtn');
+  const form = document.getElementById('addInvoiceForm');
+  const editNo = document.getElementById('editInvoiceOriginalNo');
+
+  if (form) form.reset();
+  if (editNo) editNo.value = '';
+  if (title) title.textContent = 'Add Customer Invoice Manually';
+  if (sub) sub.textContent = 'Add a single invoice to the pending invoice catalog for bank matching.';
+  if (btn) btn.textContent = 'Save & Add Invoice';
+
+  const dtInput = document.getElementById('newInvDate');
+  if (dtInput) dtInput.value = '19 Sep 2026';
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function openEditInvoiceModal(inv) {
+  if (!inv) return;
+  const modal = document.getElementById('addInvoiceModal');
+  const title = document.getElementById('addInvoiceModalTitle');
+  const sub = document.getElementById('addInvoiceModalSubtitle');
+  const btn = document.getElementById('saveInvoiceSubmitBtn');
+  const editNo = document.getElementById('editInvoiceOriginalNo');
+
+  if (title) title.textContent = 'Edit Customer Invoice';
+  if (sub) sub.textContent = 'Modify customer invoice details and receivables metadata.';
+  if (btn) btn.textContent = 'Save Changes';
+  if (editNo) editNo.value = inv.invoiceNo;
+
+  const noInput = document.getElementById('newInvNo');
+  const amtInput = document.getElementById('newInvAmount');
+  const custInput = document.getElementById('newInvCustomer');
+  const gstinInput = document.getElementById('newInvGstin');
+  const dtInput = document.getElementById('newInvDate');
+  const catInput = document.getElementById('newInvCategory');
+
+  if (noInput) noInput.value = inv.invoiceNo || '';
+  if (amtInput) amtInput.value = inv.amount || '';
+  if (custInput) custInput.value = inv.guestName || '';
+  if (gstinInput) gstinInput.value = inv.gstin || '';
+  if (dtInput) dtInput.value = inv.date || '';
+  if (catInput) catInput.value = inv.category || '';
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function confirmDeleteInvoice(inv) {
+  if (!inv) return;
+  const no = inv.invoiceNo;
+  const recon = getInvoiceReconciliationData(inv);
+  let msg = `Are you sure you want to delete invoice ${no} (${inv.guestName})?`;
+  if (recon.linkedTransactions.length > 0) {
+    msg += `\nWarning: ${recon.linkedTransactions.length} bank credit transaction(s) are mapped to this invoice and will be unlinked.`;
+  }
+
+  if (window.confirm(msg)) {
+    // Unlink any matched bank credit transactions
+    (corporateBanks || []).forEach(bank => {
+      (bank.sheets || []).forEach(sheet => {
+        (sheet.records || []).forEach(row => {
+          if (row.status === 'mapped' && row.mapping && row.mapping.invoiceNo) {
+            if (row.mapping.invoiceNo.toLowerCase() === no.toLowerCase()) {
+              row.status = 'unmapped';
+              row.mapping = null;
+            }
+          }
+        });
+      });
+    });
+
+    // Remove from appInvoices
+    appInvoices = appInvoices.filter(i => i.invoiceNo.toLowerCase() !== no.toLowerCase());
+
+    recentActivities.unshift({
+      text: `Deleted Invoice ${no} (${inv.guestName})`,
+      meta: `Desk Admin · Just now`
+    });
+
+    renderAll();
+    if (currentActiveView === 'invoices') renderInvoicesView();
+    persistToSupabase();
+    showToast(`Invoice ${no} was deleted.`);
+  }
+}
+
+function exportInvoicesToCsv() {
+  if (appInvoices.length === 0) {
+    showToast('No invoices to export.', 'amber');
+    return;
+  }
+
+  const rows = [
+    ['Invoice No', 'Customer Name', 'GSTIN', 'Invoice Amount', 'Invoice Date', 'Category', 'Settled Amount', 'Outstanding Balance', 'Status', 'Linked Bank Credits']
+  ];
+
+  appInvoices.forEach(inv => {
+    const recon = getInvoiceReconciliationData(inv);
+    const bankEvidence = recon.linkedTransactions.map(tx => `${tx.bankName} (${tx.date}: ₹${(Number(tx.amount) || 0).toLocaleString('en-IN')})`).join('; ');
+    rows.push([
+      inv.invoiceNo || '',
+      inv.guestName || '',
+      inv.gstin || '',
+      inv.amount || 0,
+      inv.date || '',
+      inv.category || 'General Pharma Supply',
+      recon.settledAmount,
+      recon.balance,
+      recon.status,
+      bankEvidence || 'None'
+    ]);
+  });
+
+  const csvContent = rows.map(r => r.map(cell => `"${String(cell != null ? cell : '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `IFIMED_Customer_Invoices_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${appInvoices.length} invoices to CSV!`, 'success');
+}
+
+function exportInvoicesToExcel() {
+  if (appInvoices.length === 0) {
+    showToast('No invoices to export.', 'amber');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    showToast('SheetJS Excel library not available. Exporting to CSV instead...', 'amber');
+    exportInvoicesToCsv();
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  let totalInvoiced = 0;
+  let totalSettled = 0;
+  let totalBalance = 0;
+  let settledCount = 0;
+  let partialCount = 0;
+  let unpaidCount = 0;
+
+  const dataRows = appInvoices.map(inv => {
+    const recon = getInvoiceReconciliationData(inv);
+    const bankEvidence = recon.linkedTransactions.map(tx => `${tx.bankName} (${tx.date}: ₹${(Number(tx.amount) || 0).toLocaleString('en-IN')})`).join('; ');
+
+    const invAmt = Number(inv.amount) || 0;
+    const setAmt = Number(recon.settledAmount) || 0;
+    const balAmt = Number(recon.balance) || 0;
+
+    totalInvoiced += invAmt;
+    totalSettled += setAmt;
+    totalBalance += balAmt;
+
+    if (recon.status === 'Settled' || recon.status === 'Fully Reconciled') settledCount++;
+    else if (recon.status === 'Partially Reconciled' || recon.status === 'Partially Settled') partialCount++;
+    else unpaidCount++;
+
+    return [
+      inv.invoiceNo || '',
+      inv.guestName || '',
+      inv.gstin || '',
+      invAmt,
+      inv.date || '',
+      inv.category || 'General Pharma Supply',
+      setAmt,
+      balAmt,
+      recon.status || 'Unpaid',
+      bankEvidence || 'None'
+    ];
+  });
+
+  const headers = [
+    ['IFIMED PHARMACEUTICALS PVT. LTD. — CUSTOMER SALES INVOICES REGISTER'],
+    [`Generated: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`],
+    [
+      `Total Invoiced: ₹ ${totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      `Total Settled: ₹ ${totalSettled.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      `Total Outstanding: ₹ ${totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      `Total Records: ${appInvoices.length} (${settledCount} Settled, ${partialCount} Partial, ${unpaidCount} Unpaid)`
+    ],
+    [],
+    ['Invoice No', 'Customer Name', 'GSTIN', 'Invoice Amount (₹)', 'Invoice Date', 'Category', 'Settled Amount (₹)', 'Outstanding Balance (₹)', 'Reconciliation Status', 'Linked Bank Credits (Evidence)']
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet([...headers, ...dataRows]);
+
+  ws['!cols'] = [
+    { wch: 16 },
+    { wch: 32 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 22 },
+    { wch: 45 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Customer Invoices');
+
+  const fileName = `IFIMED_Customer_Invoices_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showToast(`Exported ${appInvoices.length} invoices to Excel (.xlsx)!`, 'success');
+}
+
+async function clearAllInvoices() {
+  if (appInvoices.length === 0) {
+    showToast('There are no invoices to clear.', 'info');
+    return;
+  }
+  const count = appInvoices.length;
+  const ok = window.confirm(`Are you sure you want to permanently delete all ${count} customer invoices from the database?\n\nAny mapped bank transactions will be unlinked.`);
+  if (!ok) return;
+
+  // Unlink any mapped credit transactions
+  (corporateBanks || []).forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      (sheet.records || []).forEach(row => {
+        if (row.status === 'mapped' && row.mapping && row.mapping.invoiceNo) {
+          row.status = 'unmapped';
+          row.mapping = null;
+        }
+      });
+    });
+  });
+
+  appInvoices = [];
+
+  recentActivities.unshift({
+    text: `Purged all ${count} customer invoices from database`,
+    meta: `Desk Admin · Just now`
+  });
+
+  renderAll();
+  if (currentActiveView === 'invoices') renderInvoicesView();
+  if (currentActiveView === 'virtual-ledger' || currentActiveView === 'ledger') renderVirtualLedgerView();
+  await persistToSupabase();
+  showToast(`Successfully deleted all ${count} invoices from database.`, 'success');
+}
+
+function quickJumpToReconcile(inv) {
+  if (!inv) return;
+  switchView('bank-statements');
+  switchMappingMode('credit');
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.value = inv.invoiceNo;
+    searchQuery = inv.invoiceNo;
+    renderCreditTable();
+  }
+  showToast(`Switched to Credit Desk for invoice ${inv.invoiceNo}`, 'info');
+}
+
+function quickJumpToReconcileByNo(invNo) {
+  const inv = appInvoices.find(i => i.invoiceNo.toLowerCase() === String(invNo).toLowerCase());
+  if (inv) quickJumpToReconcile(inv);
+  else {
+    switchView('bank-statements');
+    switchMappingMode('credit');
+  }
+  const modal = document.getElementById('invoiceDetailsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function jumpToStatementRow(bankId, monthId, rowId) {
+  const modal = document.getElementById('invoiceDetailsModal');
+  if (modal) modal.style.display = 'none';
+
+  switchView('bank-statements');
+  switchMappingMode('credit');
+  if (bankId && bankId !== selectedBankId) {
+    switchBank(bankId);
+  }
+  if (monthId && monthId !== selectedMonthId) {
+    switchMonth(monthId);
+  }
+
+  setTimeout(() => {
+    const el = document.getElementById(`row-${rowId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.animation = 'highlightRow 2s ease';
+    }
+  }, 200);
+}
+
+window.quickJumpToReconcileByNo = quickJumpToReconcileByNo;
+window.jumpToStatementRow = jumpToStatementRow;
+
+// =============================================================================
+// VIRTUAL LEDGER MODULE (Accounting-Grade Corporate Financial Workspace)
+// =============================================================================
+
+const MONTH_NAMES_MAP = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+};
+
+function parseDateToTimestamp(dateStr) {
+  if (!dateStr) return 0;
+  const s = String(dateStr).trim();
+  // Format: DD/MM/YYYY or DD-MM-YYYY
+  const dmMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmMatch) {
+    const d = parseInt(dmMatch[1], 10);
+    const m = parseInt(dmMatch[2], 10) - 1;
+    const y = parseInt(dmMatch[3], 10);
+    return new Date(y, m, d).getTime() || 0;
+  }
+  // Format: YYYY-MM-DD
+  const ymMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (ymMatch) {
+    const y = parseInt(ymMatch[1], 10);
+    const m = parseInt(ymMatch[2], 10) - 1;
+    const d = parseInt(ymMatch[3], 10);
+    return new Date(y, m, d).getTime() || 0;
+  }
+  // Format: DD Month YYYY or DD-Month-YYYY
+  const dMonMatch = s.match(/^(\d{1,2})[\s\-]+([a-zA-Z]{3,9})[\s\-]+(\d{4})$/);
+  if (dMonMatch) {
+    const d = parseInt(dMonMatch[1], 10);
+    const mStr = dMonMatch[2].slice(0, 3).toLowerCase();
+    const m = MONTH_NAMES_MAP[mStr] !== undefined ? MONTH_NAMES_MAP[mStr] : 0;
+    const y = parseInt(dMonMatch[3], 10);
+    return new Date(y, m, d).getTime() || 0;
+  }
+  const parsed = new Date(s);
+  return !isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+}
+
+function classifyTransactionCategory(row, isDebit) {
+  const narr = String(row.narration || '').toUpperCase();
+  const typ = String(row.type || '').toUpperCase();
+
+  if (isDebit) {
+    if (narr.includes('CHG') || narr.includes('CHARGE') || narr.includes('FEE') || narr.includes('COMMISSION') || narr.includes('GST ON') || typ.includes('CHG')) {
+      return 'BANK CHARGE';
+    }
+    if (narr.includes('TDS') || narr.includes('TAX') || typ.includes('TAX')) {
+      return 'BANK CHARGE';
+    }
+    if (narr.includes('REFUND') || narr.includes('REVERSAL') || typ.includes('REFUND')) {
+      return 'REFUND';
+    }
+    if (narr.includes('SELF') || narr.includes('TRF') || narr.includes('INTERNAL') || narr.includes('SWEEP')) {
+      return 'TRANSFER';
+    }
+    return 'PAYMENT';
+  } else {
+    if (narr.includes('INT.PD') || narr.includes('INTEREST') || typ.includes('INT')) {
+      return 'RECEIPT';
+    }
+    if (narr.includes('REFUND') || narr.includes('RTN') || narr.includes('REVERSAL') || typ.includes('REFUND')) {
+      return 'REFUND';
+    }
+    if (narr.includes('SELF') || narr.includes('TRF') || narr.includes('INTERNAL') || narr.includes('SWEEP')) {
+      return 'TRANSFER';
+    }
+    return 'RECEIPT';
+  }
+}
+
+function deriveReconciliationStatus(row) {
+  if (row.status === 'mapped') return 'Reconciled';
+  if (row.status === 'matched') return 'Matched';
+  if (row.status === 'exception') return 'Exception';
+  return 'Pending';
+}
+
+function getVirtualLedgerData() {
+  const banksToInclude = ledgerBankId === 'all'
+    ? corporateBanks
+    : corporateBanks.filter(b => b.id === ledgerBankId);
+
+  // 1. Calculate Opening Balance
+  let openingBalance = 0;
+  if (ledgerMonthId !== 'all') {
+    // Opening balance is the accumulated closing balance of all sheets prior to ledgerMonthId
+    banksToInclude.forEach(bank => {
+      (bank.sheets || []).forEach(sheet => {
+        if (sheet.monthId && String(sheet.monthId) < String(ledgerMonthId)) {
+          (sheet.records || []).forEach(r => {
+            openingBalance += (parseFloat(r.amount) || 0);
+          });
+          (sheet.debitRecords || []).forEach(r => {
+            openingBalance -= (parseFloat(r.amount) || 0);
+          });
+        }
+      });
+    });
+    // Adjustments prior to selected month
+    appAdjustments.forEach(adj => {
+      if (banksToInclude.some(b => b.id === adj.bankId) && adj.date) {
+        const adjMonth = parseDateToMonthId(adj.date);
+        if (adjMonth && adjMonth < ledgerMonthId) {
+          const amt = parseFloat(adj.amount) || 0;
+          if (adj.debitOrCredit === 'credit') openingBalance += amt;
+          else openingBalance -= amt;
+        }
+      }
+    });
+  }
+  openingBalance = Math.round(openingBalance * 100) / 100;
+
+  // 2. Collect All Current Ledger Entries
+  const rawEntries = [];
+
+  banksToInclude.forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      if (ledgerMonthId !== 'all' && sheet.monthId !== ledgerMonthId) return;
+
+      // Inflows (Credits)
+      (sheet.records || []).forEach(row => {
+        const isMapped = row.status === 'mapped' && row.mapping;
+        const custName = isMapped ? (row.mapping.guestName || row.mapping.customer || 'Customer') : (row.payer || 'Bank Inflow');
+        const docNo = isMapped ? (row.mapping.invoiceNo || row.mapping.billNo || '—') : '—';
+        const docAmt = isMapped ? (parseFloat(row.mapping.invoiceAmount || row.mapping.amount) || row.amount) : null;
+        const cat = classifyTransactionCategory(row, false);
+        const status = deriveReconciliationStatus(row);
+        const ts = parseDateToTimestamp(row.date);
+
+        rawEntries.push({
+          id: row.id,
+          date: row.date,
+          timestamp: ts,
+          type: cat,
+          particulars: custName,
+          docNo: docNo,
+          docType: 'invoice',
+          docAmount: docAmt,
+          bankRef: row.bankRef || row.id || '—',
+          inflow: parseFloat(row.amount) || 0,
+          outflow: 0,
+          status: status,
+          bankId: bank.id,
+          bankName: bank.name,
+          accountNo: bank.accNo,
+          narration: row.narration || '',
+          sourceFile: sheet.fileName || 'Statement Upload',
+          mapping: row.mapping || null,
+          rawRow: row,
+          isAdjustment: false
+        });
+      });
+
+      // Outflows (Debits)
+      (sheet.debitRecords || []).forEach(row => {
+        const isMapped = row.status === 'mapped' && row.mapping;
+        const vendorName = isMapped ? (row.mapping.vendorName || row.mapping.payee || 'Vendor') : (row.payer || 'Bank Outflow');
+        const docNo = isMapped ? (row.mapping.billNo || row.mapping.invoiceNo || '—') : '—';
+        const docAmt = isMapped ? (parseFloat(row.mapping.billAmount || row.mapping.amount) || row.amount) : null;
+        const cat = classifyTransactionCategory(row, true);
+        const status = deriveReconciliationStatus(row);
+        const ts = parseDateToTimestamp(row.date);
+
+        rawEntries.push({
+          id: row.id,
+          date: row.date,
+          timestamp: ts,
+          type: cat,
+          particulars: vendorName,
+          docNo: docNo,
+          docType: 'bill',
+          docAmount: docAmt,
+          bankRef: row.bankRef || row.id || '—',
+          inflow: 0,
+          outflow: parseFloat(row.amount) || 0,
+          status: status,
+          bankId: bank.id,
+          bankName: bank.name,
+          accountNo: bank.accNo,
+          narration: row.narration || '',
+          sourceFile: sheet.fileName || 'Statement Upload',
+          mapping: row.mapping || null,
+          rawRow: row,
+          isAdjustment: false
+        });
+      });
+    });
+  });
+
+  // Adjustments in selected period
+  appAdjustments.forEach(adj => {
+    if (ledgerBankId !== 'all' && adj.bankId && adj.bankId !== ledgerBankId) return;
+    if (ledgerMonthId !== 'all') {
+      const adjMonth = parseDateToMonthId(adj.date);
+      if (adjMonth && adjMonth !== ledgerMonthId) return;
+    }
+    const isCredit = adj.debitOrCredit === 'credit';
+    const amt = parseFloat(adj.amount) || 0;
+    const bank = corporateBanks.find(b => b.id === adj.bankId) || { name: 'Corporate Account', accNo: '••••0000' };
+
+    rawEntries.push({
+      id: adj.id,
+      date: adj.date,
+      timestamp: parseDateToTimestamp(adj.date),
+      type: 'ADJUSTMENT',
+      particulars: `${adj.adjustmentType}: ${adj.description}`,
+      docNo: adj.reference || '—',
+      docType: 'adjustment',
+      docAmount: amt,
+      bankRef: adj.reference || adj.id,
+      inflow: isCredit ? amt : 0,
+      outflow: !isCredit ? amt : 0,
+      status: adj.status || 'Approved',
+      bankId: adj.bankId,
+      bankName: bank.name,
+      accountNo: bank.accNo,
+      narration: adj.description || 'General Ledger Adjustment',
+      sourceFile: `Journal Adjustment (${adj.createdBy || 'Controller'})`,
+      mapping: null,
+      rawRow: adj,
+      isAdjustment: true
+    });
+  });
+
+  // 3. Chronological Order for Accurate Accounting Running Balance
+  rawEntries.sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  let running = openingBalance;
+  let periodInflow = 0;
+  let periodOutflow = 0;
+  let countReceipts = 0;
+  let countPayments = 0;
+  let countAdjustments = 0;
+  let countTransfers = 0;
+
+  rawEntries.forEach(entry => {
+    periodInflow += entry.inflow;
+    periodOutflow += entry.outflow;
+    running = Math.round((running + entry.inflow - entry.outflow) * 100) / 100;
+    entry.runningBalance = running;
+
+    if (entry.type === 'RECEIPT' || entry.type === 'REFUND') countReceipts++;
+    else if (entry.type === 'PAYMENT' || entry.type === 'BANK CHARGE') countPayments++;
+    else if (entry.type === 'ADJUSTMENT') countAdjustments++;
+    else if (entry.type === 'TRANSFER') countTransfers++;
+  });
+
+  periodInflow = Math.round(periodInflow * 100) / 100;
+  periodOutflow = Math.round(periodOutflow * 100) / 100;
+  const closingBalance = running;
+  const netMovement = Math.round((periodInflow - periodOutflow) * 100) / 100;
+
+  // 4. Sub-view Tab and Toolbar Filtering
+  const q = (ledgerSearchQuery || '').toLowerCase().trim();
+  const dateFromTs = ledgerDateFrom ? new Date(ledgerDateFrom).setHours(0, 0, 0, 0) : null;
+  const dateToTs = ledgerDateTo ? new Date(ledgerDateTo).setHours(23, 59, 59, 999) : null;
+
+  let filteredEntries = rawEntries.filter(e => {
+    // Filter by Tab
+    if (ledgerTab === 'receipts' && e.type !== 'RECEIPT' && e.type !== 'REFUND') return false;
+    if (ledgerTab === 'payments' && e.type !== 'PAYMENT' && e.type !== 'BANK CHARGE') return false;
+    if (ledgerTab === 'adjustments' && e.type !== 'ADJUSTMENT') return false;
+    if (ledgerTab === 'transfers' && e.type !== 'TRANSFER') return false;
+
+    // Filter by Status
+    if (ledgerStatusFilter !== 'all') {
+      if (e.status.toLowerCase() !== ledgerStatusFilter.toLowerCase()) return false;
+    }
+
+    // Filter by Search Query
+    if (q) {
+      const matchPart = (e.particulars || '').toLowerCase().includes(q);
+      const matchDoc = (e.docNo || '').toLowerCase().includes(q);
+      const matchRef = (e.bankRef || '').toLowerCase().includes(q);
+      const matchNarr = (e.narration || '').toLowerCase().includes(q);
+      const matchBank = (e.bankName || '').toLowerCase().includes(q);
+      const matchAmt = String(e.inflow || e.outflow || '').includes(q);
+      if (!matchPart && !matchDoc && !matchRef && !matchNarr && !matchBank && !matchAmt) return false;
+    }
+
+    // Filter by Date Range
+    if (dateFromTs && e.timestamp < dateFromTs) return false;
+    if (dateToTs && e.timestamp > dateToTs) return false;
+
+    // Filter by Amount Range
+    const amt = e.inflow || e.outflow || 0;
+    if (ledgerMinAmount !== null && !isNaN(ledgerMinAmount) && amt < ledgerMinAmount) return false;
+    if (ledgerMaxAmount !== null && !isNaN(ledgerMaxAmount) && amt > ledgerMaxAmount) return false;
+
+    return true;
+  });
+
+  // Display Sort (Newest first by default for convenient browsing, while retaining the exact running balance)
+  filteredEntries.sort((a, b) => {
+    if (ledgerSortColumn === 'date') {
+      return ledgerSortDir === 'asc' ? a.timestamp - b.timestamp : b.timestamp - a.timestamp;
+    }
+    if (ledgerSortColumn === 'amount') {
+      const amtA = a.inflow || a.outflow;
+      const amtB = b.inflow || b.outflow;
+      return ledgerSortDir === 'asc' ? amtA - amtB : amtB - amtA;
+    }
+    return b.timestamp - a.timestamp;
+  });
+
+  return {
+    rawCount: rawEntries.length,
+    filteredEntries,
+    openingBalance,
+    totalInflow: periodInflow,
+    totalOutflow: periodOutflow,
+    closingBalance,
+    netMovement,
+    countReceipts,
+    countPayments,
+    countAdjustments,
+    countTransfers
+  };
+}
+
+function calculateAgeInDays(dateStr, timestamp) {
+  let ts = timestamp;
+  if (!ts && dateStr) ts = parseDateToTimestamp(dateStr);
+  if (!ts) return 0;
+  const now = Date.now();
+  const diffMs = now - ts;
+  if (diffMs <= 0) return 0;
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function getAgeingBracket(ageDays) {
+  if (ageDays <= 30) return { key: 'current', label: '0-30 Days', class: 'ageing-current' };
+  if (ageDays <= 60) return { key: 'due', label: '31-60 Days', class: 'ageing-due' };
+  if (ageDays <= 90) return { key: 'overdue', label: '61-90 Days', class: 'ageing-overdue' };
+  return { key: 'critical', label: '90+ Days', class: 'ageing-critical' };
+}
+
+function getVendorBillReconciliationData(bill) {
+  if (!bill || !bill.billNo) {
+    return {
+      linkedTransactions: [],
+      settledAmount: 0,
+      balance: 0,
+      percent: 0,
+      status: 'Unreconciled'
+    };
+  }
+
+  const targetNo = String(bill.billNo).trim().toLowerCase();
+  const linked = [];
+
+  (corporateBanks || []).forEach(bank => {
+    (bank.sheets || []).forEach(sheet => {
+      (sheet.records || []).forEach(row => {
+        if (row.status === 'mapped' && row.mapping) {
+          const mappedDoc = String(row.mapping.billNo || row.mapping.invoiceNo || '').trim().toLowerCase();
+          if (mappedDoc === targetNo) {
+            linked.push({
+              bankId: bank.id,
+              bankName: bank.name,
+              bankAccNo: bank.accNo,
+              monthId: sheet.id,
+              monthName: sheet.month,
+              rowId: row.id,
+              date: row.date,
+              amount: parseFloat(row.amount) || 0,
+              narration: row.narration || '',
+              bankRef: row.bankRef || '',
+              type: row.type || 'PAYMENT',
+              mappedAt: row.mapping.mappedAt || '',
+              mappedBy: row.mapping.mappedBy || 'Accounts Controller'
+            });
+          }
+        }
+      });
+    });
+  });
+
+  const billAmount = Math.max(0, parseFloat(bill.amount) || 0);
+  const totalSettled = linked.reduce((sum, item) => sum + item.amount, 0);
+  const balance = Math.max(0, billAmount - totalSettled);
+  const percent = billAmount > 0 ? Math.min(100, Math.round((totalSettled / billAmount) * 100)) : (totalSettled > 0 ? 100 : 0);
+
+  let status = 'Unreconciled';
+  if (totalSettled >= billAmount && billAmount > 0) {
+    status = 'Paid';
+  } else if (totalSettled > 0) {
+    status = 'Partial';
+  } else if (bill.status && (bill.status === 'Paid' || bill.status === 'Partial' || bill.status === 'Reconciled')) {
+    status = bill.status === 'Reconciled' ? 'Paid' : bill.status;
+  }
+
+  return {
+    linkedTransactions: linked,
+    settledAmount: totalSettled,
+    balance: balance,
+    percent: percent,
+    status: status
+  };
+}
+
+function getVirtualReceivablesData() {
+  const q = (ledgerSearchQuery || '').toLowerCase().trim();
+  const dateFromTs = ledgerDateFrom ? new Date(ledgerDateFrom).setHours(0, 0, 0, 0) : null;
+  const dateToTs = ledgerDateTo ? new Date(ledgerDateTo).setHours(23, 59, 59, 999) : null;
+
+  let totalInvoiced = 0;
+  let totalReceived = 0;
+  let totalOutstanding = 0;
+
+  const items = appInvoices.map(inv => {
+    const recon = getInvoiceReconciliationData(inv);
+    const invAmt = parseFloat(inv.amount) || 0;
+    const received = recon.settledAmount;
+    const outstanding = Math.max(0, invAmt - received);
+    const ts = parseDateToTimestamp(inv.date);
+    const age = calculateAgeInDays(inv.date, ts);
+    const bracket = getAgeingBracket(age);
+
+    totalInvoiced += invAmt;
+    totalReceived += received;
+    totalOutstanding += outstanding;
+
+    let status = 'Unpaid';
+    if (outstanding <= 0.01) status = 'Paid';
+    else if (received > 0) status = 'Partial';
+
+    return {
+      id: inv.invoiceNo,
+      customer: inv.guestName || 'Customer',
+      invoiceNo: inv.invoiceNo,
+      invoiceDate: inv.date || '—',
+      timestamp: ts,
+      invoiceAmount: invAmt,
+      amountReceived: received,
+      outstanding: outstanding,
+      dueDate: inv.dueDate || inv.date || '—',
+      age: age,
+      bracket: bracket,
+      status: status,
+      raw: inv
+    };
+  });
+
+  const filtered = items.filter(item => {
+    if (ledgerStatusFilter !== 'all') {
+      if (item.status.toLowerCase() !== ledgerStatusFilter.toLowerCase()) return false;
+    }
+    if (q) {
+      const matchCust = item.customer.toLowerCase().includes(q);
+      const matchNo = item.invoiceNo.toLowerCase().includes(q);
+      const matchAmt = String(item.invoiceAmount).includes(q);
+      if (!matchCust && !matchNo && !matchAmt) return false;
+    }
+    if (dateFromTs && item.timestamp < dateFromTs) return false;
+    if (dateToTs && item.timestamp > dateToTs) return false;
+    if (ledgerMinAmount !== null && !isNaN(ledgerMinAmount) && item.invoiceAmount < ledgerMinAmount) return false;
+    if (ledgerMaxAmount !== null && !isNaN(ledgerMaxAmount) && item.invoiceAmount > ledgerMaxAmount) return false;
+    return true;
+  });
+
+  return {
+    items: filtered,
+    totalCount: items.length,
+    totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+    totalReceived: Math.round(totalReceived * 100) / 100,
+    totalOutstanding: Math.round(totalOutstanding * 100) / 100
+  };
+}
+
+function getVirtualPayablesData() {
+  const q = (ledgerSearchQuery || '').toLowerCase().trim();
+  const dateFromTs = ledgerDateFrom ? new Date(ledgerDateFrom).setHours(0, 0, 0, 0) : null;
+  const dateToTs = ledgerDateTo ? new Date(ledgerDateTo).setHours(23, 59, 59, 999) : null;
+
+  let totalBilled = 0;
+  let totalPaid = 0;
+  let totalOutstanding = 0;
+
+  const items = appVendorBills.map(bill => {
+    const recon = getVendorBillReconciliationData(bill);
+    const billAmt = parseFloat(bill.amount) || 0;
+    const paid = recon.settledAmount;
+    const outstanding = Math.max(0, billAmt - paid);
+    const ts = parseDateToTimestamp(bill.date);
+    const age = calculateAgeInDays(bill.date, ts);
+    const bracket = getAgeingBracket(age);
+
+    totalBilled += billAmt;
+    totalPaid += paid;
+    totalOutstanding += outstanding;
+
+    let status = 'Unpaid';
+    if (outstanding <= 0.01) status = 'Paid';
+    else if (paid > 0) status = 'Partial';
+
+    return {
+      id: bill.billNo,
+      supplier: bill.vendorName || 'Supplier',
+      billNo: bill.billNo,
+      billDate: bill.date || '—',
+      timestamp: ts,
+      billAmount: billAmt,
+      amountPaid: paid,
+      outstanding: outstanding,
+      dueDate: bill.dueDate || bill.date || '—',
+      age: age,
+      bracket: bracket,
+      status: status,
+      raw: bill
+    };
+  });
+
+  const filtered = items.filter(item => {
+    if (ledgerStatusFilter !== 'all') {
+      if (item.status.toLowerCase() !== ledgerStatusFilter.toLowerCase()) return false;
+    }
+    if (q) {
+      const matchSup = item.supplier.toLowerCase().includes(q);
+      const matchNo = item.billNo.toLowerCase().includes(q);
+      const matchAmt = String(item.billAmount).includes(q);
+      if (!matchSup && !matchNo && !matchAmt) return false;
+    }
+    if (dateFromTs && item.timestamp < dateFromTs) return false;
+    if (dateToTs && item.timestamp > dateToTs) return false;
+    if (ledgerMinAmount !== null && !isNaN(ledgerMinAmount) && item.billAmount < ledgerMinAmount) return false;
+    if (ledgerMaxAmount !== null && !isNaN(ledgerMaxAmount) && item.billAmount > ledgerMaxAmount) return false;
+    return true;
+  });
+
+  return {
+    items: filtered,
+    totalCount: items.length,
+    totalBilled: Math.round(totalBilled * 100) / 100,
+    totalPaid: Math.round(totalPaid * 100) / 100,
+    totalOutstanding: Math.round(totalOutstanding * 100) / 100
+  };
+}
+
+function getAllPartiesList() {
+  const parties = [];
+  const seen = new Set();
+
+  appInvoices.forEach(inv => {
+    const name = (inv.guestName || '').trim();
+    if (name && !seen.has('cust:' + name.toLowerCase())) {
+      seen.add('cust:' + name.toLowerCase());
+      parties.push({
+        name: name,
+        type: 'Customer',
+        gstin: inv.rawRow && inv.rawRow.gstin ? inv.rawRow.gstin : (inv.gstin || '')
+      });
+    }
+  });
+
+  appVendorBills.forEach(bill => {
+    const name = (bill.vendorName || '').trim();
+    if (name && !seen.has('vend:' + name.toLowerCase())) {
+      seen.add('vend:' + name.toLowerCase());
+      parties.push({
+        name: name,
+        type: 'Supplier',
+        gstin: bill.rawRow && bill.rawRow.gstin ? bill.rawRow.gstin : (bill.gstin || '')
+      });
+    }
+  });
+
+  return parties.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getPartyLedgerStatement(partyName) {
+  if (!partyName) {
+    return {
+      partyName: '—',
+      partyType: 'Customer',
+      gstin: '—',
+      entries: [],
+      totalInvoiced: 0,
+      totalSettled: 0,
+      netBalance: 0,
+      netBalanceDrCr: 'Dr'
+    };
+  }
+
+  const pLower = partyName.trim().toLowerCase();
+  let partyType = 'Customer';
+  let gstin = '—';
+
+  // Check customer invoices
+  const customerInvoices = appInvoices.filter(inv => (inv.guestName || '').trim().toLowerCase() === pLower);
+  // Check supplier bills
+  const supplierBills = appVendorBills.filter(bill => (bill.vendorName || '').trim().toLowerCase() === pLower);
+
+  if (supplierBills.length > 0 && customerInvoices.length === 0) {
+    partyType = 'Supplier';
+  }
+
+  const rawEntries = [];
+
+  // Invoices for customer
+  customerInvoices.forEach(inv => {
+    if (gstin === '—' && inv.rawRow && inv.rawRow.gstin) gstin = inv.rawRow.gstin;
+    else if (gstin === '—' && inv.gstin) gstin = inv.gstin;
+
+    const invAmt = parseFloat(inv.amount) || 0;
+    const ts = parseDateToTimestamp(inv.date);
+    rawEntries.push({
+      date: inv.date || '—',
+      timestamp: ts,
+      voucherType: 'Sales Invoice',
+      refNo: inv.invoiceNo || '—',
+      particulars: `To Sales: Inv #${inv.invoiceNo}`,
+      narration: inv.guestName || '',
+      debit: invAmt,
+      credit: 0
+    });
+
+    // Check linked bank credits (Receipts from this customer)
+    const recon = getInvoiceReconciliationData(inv);
+    (recon.linkedTransactions || []).forEach(lt => {
+      rawEntries.push({
+        date: lt.date || inv.date || '—',
+        timestamp: parseDateToTimestamp(lt.date) || (ts + 1000),
+        voucherType: 'Bank Receipt',
+        refNo: lt.bankRef || lt.rowId || 'UTR',
+        particulars: `By Bank Receipt: ${lt.bankName} ${lt.bankAccNo}`,
+        narration: lt.narration || `Payment against #${inv.invoiceNo}`,
+        debit: 0,
+        credit: lt.amount
+      });
+    });
+  });
+
+  // Bills for supplier
+  supplierBills.forEach(bill => {
+    if (gstin === '—' && bill.rawRow && bill.rawRow.gstin) gstin = bill.rawRow.gstin;
+    else if (gstin === '—' && bill.gstin) gstin = bill.gstin;
+
+    const billAmt = parseFloat(bill.amount) || 0;
+    const ts = parseDateToTimestamp(bill.date);
+    rawEntries.push({
+      date: bill.date || '—',
+      timestamp: ts,
+      voucherType: 'Purchase Bill',
+      refNo: bill.billNo || '—',
+      particulars: `By Purchase: Bill #${bill.billNo}`,
+      narration: bill.vendorName || '',
+      debit: 0,
+      credit: billAmt
+    });
+
+    // Check linked bank debits (Payments to this supplier)
+    const recon = getVendorBillReconciliationData(bill);
+    (recon.linkedTransactions || []).forEach(lt => {
+      rawEntries.push({
+        date: lt.date || bill.date || '—',
+        timestamp: parseDateToTimestamp(lt.date) || (ts + 1000),
+        voucherType: 'Bank Payment',
+        refNo: lt.bankRef || lt.rowId || 'UTR',
+        particulars: `To Bank Payment: ${lt.bankName} ${lt.bankAccNo}`,
+        narration: lt.narration || `Disbursement for #${bill.billNo}`,
+        debit: lt.amount,
+        credit: 0
+      });
+    });
+  });
+
+  // Check adjustments referencing this party
+  (appAdjustments || []).forEach(adj => {
+    const desc = (adj.description || '').toLowerCase();
+    const ref = (adj.reference || '').toLowerCase();
+    if (desc.includes(pLower) || ref.includes(pLower)) {
+      const isDr = adj.debitOrCredit === 'debit';
+      const amt = parseFloat(adj.amount) || 0;
+      rawEntries.push({
+        date: adj.date || '—',
+        timestamp: parseDateToTimestamp(adj.date) || 0,
+        voucherType: `JV: ${adj.adjustmentType}`,
+        refNo: adj.reference || 'JV',
+        particulars: adj.adjustmentType,
+        narration: adj.description,
+        debit: isDr ? amt : 0,
+        credit: !isDr ? amt : 0
+      });
+    }
+  });
+
+  // Sort entries chronologically
+  rawEntries.sort((a, b) => a.timestamp - b.timestamp);
+
+  let running = 0;
+  let totalInvoiced = 0;
+  let totalSettled = 0;
+
+  const entries = rawEntries.map(e => {
+    if (partyType === 'Customer') {
+      totalInvoiced += e.debit;
+      totalSettled += e.credit;
+      running += (e.debit - e.credit);
+      const drCr = running >= 0 ? 'Dr' : 'Cr';
+      return {
+        ...e,
+        runningBalance: Math.abs(running),
+        drCr: drCr
+      };
+    } else {
+      totalInvoiced += e.credit;
+      totalSettled += e.debit;
+      running += (e.credit - e.debit);
+      const drCr = running >= 0 ? 'Cr' : 'Dr';
+      return {
+        ...e,
+        runningBalance: Math.abs(running),
+        drCr: drCr
+      };
+    }
+  });
+
+  const netBalance = Math.abs(running);
+  const netBalanceDrCr = partyType === 'Customer' ? (running >= 0 ? 'Dr' : 'Cr') : (running >= 0 ? 'Cr' : 'Dr');
+
+  return {
+    partyName,
+    partyType,
+    gstin,
+    entries,
+    totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+    totalSettled: Math.round(totalSettled * 100) / 100,
+    netBalance: Math.round(netBalance * 100) / 100,
+    netBalanceDrCr
+  };
+}
+
+function exportPartyLedgerToExcel(partyName) {
+  if (!partyName) {
+    if (typeof showCorporateToast === 'function') showCorporateToast('No party selected to export', 'error');
+    return;
+  }
+  const statement = getPartyLedgerStatement(partyName);
+  if (!statement || statement.entries.length === 0) {
+    if (typeof showCorporateToast === 'function') showCorporateToast(`No transactions found for ${partyName}`, 'error');
+    return;
+  }
+
+  try {
+    if (typeof XLSX === 'undefined') {
+      if (typeof showCorporateToast === 'function') showCorporateToast('Excel export library not loaded', 'error');
+      return;
+    }
+
+    const rows = [
+      ['IFIMED PHARMACEUTICALS PRIVATE LIMITED'],
+      ['VIRTUAL LEDGER — STATEMENT OF ACCOUNT'],
+      ['Party Name:', statement.partyName],
+      ['Account Type:', statement.partyType],
+      ['GSTIN:', statement.gstin || 'Unspecified'],
+      ['Generated At:', new Date().toLocaleString('en-IN')],
+      [],
+      ['Total Invoiced / Billed (₹):', statement.totalInvoiced],
+      ['Total Settled / Paid (₹):', statement.totalSettled],
+      ['Net Outstanding Balance (₹):', `${statement.netBalance} ${statement.netBalanceDrCr}`],
+      [],
+      ['Date', 'Voucher Type', 'Ref / Vch #', 'Particulars', 'Narration', 'Debit (Dr ₹)', 'Credit (Cr ₹)', 'Running Balance (₹)', 'Dr/Cr']
+    ];
+
+    statement.entries.forEach(e => {
+      rows.push([
+        e.date,
+        e.voucherType,
+        e.refNo,
+        e.particulars,
+        e.narration || '',
+        e.debit > 0 ? e.debit : 0,
+        e.credit > 0 ? e.credit : 0,
+        e.runningBalance,
+        e.drCr
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Party Statement');
+
+    const cleanName = partyName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(wb, `${cleanName}_Statement_IFIMED.xlsx`);
+    if (typeof showCorporateToast === 'function') showCorporateToast(`Exported statement for ${partyName}`, 'success');
+  } catch (err) {
+    console.error('Error exporting party statement:', err);
+    if (typeof showCorporateToast === 'function') showCorporateToast('Failed to export statement: ' + err.message, 'error');
+  }
+}
+
+function getPharmaAgeingData(type = 'receivables') {
+  const isDebtor = type === 'receivables';
+  const partyMap = new Map();
+
+  let total0_30 = 0;
+  let total31_60 = 0;
+  let total61_90 = 0;
+  let total90Plus = 0;
+  let grandTotalDue = 0;
+  let grandTotalInvoiced = 0;
+  let grandTotalSettled = 0;
+
+  if (isDebtor) {
+    // Process Customer Invoices
+    appInvoices.forEach(inv => {
+      const custName = (inv.guestName || 'Customer').trim();
+      const recon = getInvoiceReconciliationData(inv);
+      const invAmt = parseFloat(inv.amount) || 0;
+      const settled = recon.settledAmount;
+      const due = Math.max(0, invAmt - settled);
+      const gstin = inv.rawRow && inv.rawRow.gstin ? inv.rawRow.gstin : (inv.gstin || '—');
+
+      const ts = parseDateToTimestamp(inv.date);
+      const ageDays = calculateAgeInDays(inv.date, ts);
+
+      grandTotalInvoiced += invAmt;
+      grandTotalSettled += settled;
+      grandTotalDue += due;
+
+      if (!partyMap.has(custName)) {
+        partyMap.set(custName, {
+          partyName: custName,
+          gstin: gstin,
+          type: 'Customer',
+          totalInvoiced: 0,
+          totalSettled: 0,
+          bucket0_30: 0,
+          bucket31_60: 0,
+          bucket61_90: 0,
+          bucket90Plus: 0,
+          totalDue: 0
+        });
+      }
+
+      const p = partyMap.get(custName);
+      if (p.gstin === '—' && gstin !== '—') p.gstin = gstin;
+      p.totalInvoiced += invAmt;
+      p.totalSettled += settled;
+      p.totalDue += due;
+
+      if (due > 0) {
+        if (ageDays <= 30) {
+          p.bucket0_30 += due;
+          total0_30 += due;
+        } else if (ageDays <= 60) {
+          p.bucket31_60 += due;
+          total31_60 += due;
+        } else if (ageDays <= 90) {
+          p.bucket61_90 += due;
+          total61_90 += due;
+        } else {
+          p.bucket90Plus += due;
+          total90Plus += due;
+        }
+      }
+    });
+  } else {
+    // Process Vendor Bills
+    appVendorBills.forEach(bill => {
+      const supName = (bill.vendorName || 'Supplier').trim();
+      const recon = getVendorBillReconciliationData(bill);
+      const billAmt = parseFloat(bill.amount) || 0;
+      const paid = recon.settledAmount;
+      const due = Math.max(0, billAmt - paid);
+      const gstin = bill.rawRow && bill.rawRow.gstin ? bill.rawRow.gstin : (bill.gstin || '—');
+
+      const ts = parseDateToTimestamp(bill.date);
+      const ageDays = calculateAgeInDays(bill.date, ts);
+
+      grandTotalInvoiced += billAmt;
+      grandTotalSettled += paid;
+      grandTotalDue += due;
+
+      if (!partyMap.has(supName)) {
+        partyMap.set(supName, {
+          partyName: supName,
+          gstin: gstin,
+          type: 'Supplier',
+          totalInvoiced: 0,
+          totalSettled: 0,
+          bucket0_30: 0,
+          bucket31_60: 0,
+          bucket61_90: 0,
+          bucket90Plus: 0,
+          totalDue: 0
+        });
+      }
+
+      const p = partyMap.get(supName);
+      if (p.gstin === '—' && gstin !== '—') p.gstin = gstin;
+      p.totalInvoiced += billAmt;
+      p.totalSettled += paid;
+      p.totalDue += due;
+
+      if (due > 0) {
+        if (ageDays <= 30) {
+          p.bucket0_30 += due;
+          total0_30 += due;
+        } else if (ageDays <= 60) {
+          p.bucket31_60 += due;
+          total31_60 += due;
+        } else if (ageDays <= 90) {
+          p.bucket61_90 += due;
+          total61_90 += due;
+        } else {
+          p.bucket90Plus += due;
+          total90Plus += due;
+        }
+      }
+    });
+  }
+
+  const parties = Array.from(partyMap.values()).sort((a, b) => b.totalDue - a.totalDue);
+
+  return {
+    type,
+    parties,
+    total0_30: Math.round(total0_30 * 100) / 100,
+    total31_60: Math.round(total31_60 * 100) / 100,
+    total61_90: Math.round(total61_90 * 100) / 100,
+    total90Plus: Math.round(total90Plus * 100) / 100,
+    grandTotalDue: Math.round(grandTotalDue * 100) / 100,
+    grandTotalInvoiced: Math.round(grandTotalInvoiced * 100) / 100,
+    grandTotalSettled: Math.round(grandTotalSettled * 100) / 100
+  };
+}
+
+function openPartyLedger(partyName) {
+  ledgerTab = 'party-ledgers';
+  ledgerSelectedParty = partyName;
+  renderVirtualLedgerView();
+}
+
+function renderVirtualAgeingTable(type) {
+  const ageingData = getPharmaAgeingData(type);
+  const tbody = document.getElementById('ledgerAgeingTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  // Update Toggle Button styles
+  const btnRec = document.getElementById('ageingToggleReceivablesBtn');
+  const btnPay = document.getElementById('ageingTogglePayablesBtn');
+  if (btnRec && btnPay) {
+    if (type === 'receivables') {
+      btnRec.className = 'btn btn-sm btn-primary';
+      btnPay.className = 'btn btn-sm btn-outline';
+    } else {
+      btnRec.className = 'btn btn-sm btn-outline';
+      btnPay.className = 'btn btn-sm btn-primary';
+    }
+  }
+
+  // Update 4 KPI Cards
+  const curAmtEl = document.getElementById('ageingBucketCurrentAmt');
+  const curSubEl = document.getElementById('ageingBucketCurrentSub');
+  const dueAmtEl = document.getElementById('ageingBucketDueAmt');
+  const dueSubEl = document.getElementById('ageingBucketDueSub');
+  const ovrAmtEl = document.getElementById('ageingBucketOverdueAmt');
+  const ovrSubEl = document.getElementById('ageingBucketOverdueSub');
+  const critAmtEl = document.getElementById('ageingBucketCriticalAmt');
+  const critSubEl = document.getElementById('ageingBucketCriticalSub');
+
+  const totalDue = ageingData.grandTotalDue || 1;
+  const pctCur = Math.round((ageingData.total0_30 / totalDue) * 100);
+  const pctDue = Math.round((ageingData.total31_60 / totalDue) * 100);
+  const pctOvr = Math.round((ageingData.total61_90 / totalDue) * 100);
+  const pctCrit = Math.round((ageingData.total90Plus / totalDue) * 100);
+
+  if (curAmtEl) curAmtEl.textContent = formatINR(ageingData.total0_30);
+  if (curSubEl) curSubEl.textContent = `${pctCur}% of total due • Normal credit terms`;
+  if (dueAmtEl) dueAmtEl.textContent = formatINR(ageingData.total31_60);
+  if (dueSubEl) dueSubEl.textContent = `${pctDue}% of total due • Stockist payment due`;
+  if (ovrAmtEl) ovrAmtEl.textContent = formatINR(ageingData.total61_90);
+  if (ovrSubEl) ovrSubEl.textContent = `${pctOvr}% of total due • Credit hold notice`;
+  if (critAmtEl) critAmtEl.textContent = formatINR(ageingData.total90Plus);
+  if (critSubEl) critSubEl.textContent = `${pctCrit}% of total due • High default / return risk`;
+
+  if (ageingData.parties.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="10" class="text-center" style="padding: 32px; color: var(--text-muted);">No outstanding accounts for this category.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  ageingData.parties.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(p.partyName)}</strong></td>
+      <td class="font-mono" style="font-size: 11.5px; color: var(--text-secondary);">${escapeHtml(p.gstin)}</td>
+      <td class="text-right font-mono">${formatINR(p.totalInvoiced)}</td>
+      <td class="text-right font-mono" style="color: #059669;">${formatINR(p.totalSettled)}</td>
+      <td class="text-right font-mono" style="color: #059669;">${p.bucket0_30 > 0 ? formatINR(p.bucket0_30) : '—'}</td>
+      <td class="text-right font-mono" style="color: #d97706;">${p.bucket31_60 > 0 ? formatINR(p.bucket31_60) : '—'}</td>
+      <td class="text-right font-mono" style="color: #ea580c;">${p.bucket61_90 > 0 ? formatINR(p.bucket61_90) : '—'}</td>
+      <td class="text-right font-mono font-bold" style="color: #e11d48;">${p.bucket90Plus > 0 ? formatINR(p.bucket90Plus) : '—'}</td>
+      <td class="text-right font-mono font-bold" style="color: ${p.totalDue > 0 ? '#d97706' : '#059669'};">${formatINR(p.totalDue)}</td>
+      <td class="text-center">
+        <button type="button" class="btn btn-outline btn-sm ageing-khata-btn" style="padding: 2px 7px; font-size: 11px;">
+          View Khata
+        </button>
+      </td>
+    `;
+
+    const khataBtn = tr.querySelector('.ageing-khata-btn');
+    if (khataBtn) {
+      khataBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPartyLedger(p.partyName);
+      });
+    }
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderVirtualPartyLedgerView() {
+  const partySelect = document.getElementById('ledgerPartySelect');
+  const allParties = getAllPartiesList();
+
+  if (partySelect) {
+    partySelect.innerHTML = '';
+    if (allParties.length === 0) {
+      partySelect.innerHTML = '<option value="">No customer or supplier records found</option>';
+    } else {
+      const custGroup = document.createElement('optgroup');
+      custGroup.label = 'Customers (Debtors / Stockists)';
+      const suppGroup = document.createElement('optgroup');
+      suppGroup.label = 'Suppliers (Creditors / Vendors)';
+
+      allParties.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = `${p.name} (${p.type})`;
+        if (p.name === ledgerSelectedParty) opt.selected = true;
+
+        if (p.type === 'Customer') custGroup.appendChild(opt);
+        else suppGroup.appendChild(opt);
+      });
+
+      if (custGroup.children.length > 0) partySelect.appendChild(custGroup);
+      if (suppGroup.children.length > 0) partySelect.appendChild(suppGroup);
+
+      if (!ledgerSelectedParty && allParties.length > 0) {
+        ledgerSelectedParty = allParties[0].name;
+        partySelect.value = ledgerSelectedParty;
+      }
+    }
+  }
+
+  if (!ledgerSelectedParty) return;
+
+  const statement = getPartyLedgerStatement(ledgerSelectedParty);
+
+  // Update Header Summary Card
+  const nameEl = document.getElementById('partyCardName');
+  const typeBadge = document.getElementById('partyCardType');
+  const gstinEl = document.getElementById('partyCardGstin');
+  const countEl = document.getElementById('partyCardCount');
+  const totalBilledEl = document.getElementById('partyCardTotalBilled');
+  const totalSettledEl = document.getElementById('partyCardTotalSettled');
+  const netBalEl = document.getElementById('partyCardNetBalance');
+
+  if (nameEl) nameEl.textContent = statement.partyName;
+  if (typeBadge) {
+    typeBadge.textContent = statement.partyType;
+    typeBadge.style.background = statement.partyType === 'Customer' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(217, 119, 6, 0.1)';
+    typeBadge.style.color = statement.partyType === 'Customer' ? '#2563eb' : '#d97706';
+  }
+  if (gstinEl) gstinEl.textContent = `GSTIN: ${statement.gstin || 'Unspecified'}`;
+  if (countEl) countEl.textContent = `${statement.entries.length} Transactions`;
+  if (totalBilledEl) totalBilledEl.textContent = formatINR(statement.totalInvoiced);
+  if (totalSettledEl) totalSettledEl.textContent = formatINR(statement.totalSettled);
+  if (netBalEl) {
+    netBalEl.textContent = `${formatINR(statement.netBalance)} ${statement.netBalanceDrCr}`;
+    netBalEl.style.color = statement.netBalance > 0 ? (statement.partyType === 'Customer' ? '#d97706' : '#2563eb') : '#059669';
+  }
+
+  // Render Statement Table
+  const tbody = document.getElementById('ledgerPartyStatementTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (statement.entries.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="8" class="text-center" style="padding: 32px; color: var(--text-muted);">No transactions recorded for ${escapeHtml(statement.partyName)}.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  statement.entries.forEach(entry => {
+    const tr = document.createElement('tr');
+    const isDr = entry.debit > 0;
+    const isCr = entry.credit > 0;
+
+    let vchBadgeClass = 'badge-reconciled';
+    if (entry.voucherType.includes('Invoice')) vchBadgeClass = 'badge-receipt';
+    else if (entry.voucherType.includes('Bill')) vchBadgeClass = 'badge-payment';
+    else if (entry.voucherType.includes('Receipt')) vchBadgeClass = 'badge-green';
+    else if (entry.voucherType.includes('Payment')) vchBadgeClass = 'badge-rose';
+
+    tr.innerHTML = `
+      <td class="font-mono">${escapeHtml(entry.date)}</td>
+      <td><span class="ledger-type-badge ${vchBadgeClass}">${escapeHtml(entry.voucherType)}</span></td>
+      <td class="font-mono font-bold">${escapeHtml(entry.refNo)}</td>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(entry.particulars)}</div>
+        ${entry.narration ? `<div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(entry.narration)}</div>` : ''}
+      </td>
+      <td class="text-right font-mono" style="color: ${isDr ? '#0f172a' : 'inherit'}; font-weight: ${isDr ? '600' : 'normal'};">${isDr ? formatINR(entry.debit) : '—'}</td>
+      <td class="text-right font-mono" style="color: ${isCr ? '#0f172a' : 'inherit'}; font-weight: ${isCr ? '600' : 'normal'};">${isCr ? formatINR(entry.credit) : '—'}</td>
+      <td class="text-right font-mono font-bold">${formatINR(entry.runningBalance)}</td>
+      <td class="text-center"><span class="badge ${entry.drCr === 'Dr' ? 'badge-amber' : 'badge-green'}" style="font-size: 10.5px; padding: 2px 6px;">${entry.drCr}</span></td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+function updateVirtualLedgerBadge() {
+  // Can be used if a badge is added to the top navbar
+}
+
+function renderVirtualLedgerView() {
+  renderVirtualLedgerHeader();
+
+  const ledgerData = getVirtualLedgerData();
+  const receivablesData = getVirtualReceivablesData();
+  const payablesData = getVirtualPayablesData();
+
+  // 1. Render 5 KPI Cards
+  const openBalEl = document.getElementById('ledgerOpeningBalance');
+  const inflowEl = document.getElementById('ledgerTotalInflow');
+  const inflowSubEl = document.getElementById('ledgerTotalInflowSub');
+  const outflowEl = document.getElementById('ledgerTotalOutflow');
+  const outflowSubEl = document.getElementById('ledgerTotalOutflowSub');
+  const closeBalEl = document.getElementById('ledgerClosingBalance');
+  const netMovEl = document.getElementById('ledgerNetMovement');
+  const netMovSubEl = document.getElementById('ledgerNetMovementSub');
+
+  if (openBalEl) openBalEl.textContent = formatINR(ledgerData.openingBalance);
+  if (inflowEl) inflowEl.textContent = formatINR(ledgerData.totalInflow);
+  if (inflowSubEl) inflowSubEl.textContent = `${ledgerData.countReceipts} receipts & credits`;
+  if (outflowEl) outflowEl.textContent = formatINR(ledgerData.totalOutflow);
+  if (outflowSubEl) outflowSubEl.textContent = `${ledgerData.countPayments} payments & debits`;
+  if (closeBalEl) closeBalEl.textContent = formatINR(ledgerData.closingBalance);
+  if (netMovEl) {
+    const netSign = ledgerData.netMovement > 0 ? '+' : '';
+    netMovEl.textContent = `${netSign}${formatINR(ledgerData.netMovement)}`;
+    netMovEl.style.color = ledgerData.netMovement >= 0 ? '#059669' : '#be123c';
+  }
+  if (netMovSubEl) {
+    netMovSubEl.textContent = ledgerData.netMovement >= 0 ? 'Net Cash Accumulation' : 'Net Cash Outflow';
+  }
+
+  // 2. Render Tab Badges
+  const tabAllCount = document.getElementById('ledgerTabAllCount');
+  const tabReceiptsCount = document.getElementById('ledgerTabReceiptsCount');
+  const tabPaymentsCount = document.getElementById('ledgerTabPaymentsCount');
+  const tabAdjustmentsCount = document.getElementById('ledgerTabAdjustmentsCount');
+  const tabTransfersCount = document.getElementById('ledgerTabTransfersCount');
+  const tabReceivablesCount = document.getElementById('ledgerTabReceivablesCount');
+  const tabPayablesCount = document.getElementById('ledgerTabPayablesCount');
+  const tabPartyCount = document.getElementById('ledgerTabPartyLedgersCount');
+  const tabAgeingCount = document.getElementById('ledgerTabAgeingCount');
+  const allParties = getAllPartiesList();
+
+  if (tabAllCount) tabAllCount.textContent = String(ledgerData.rawCount);
+  if (tabReceiptsCount) tabReceiptsCount.textContent = String(ledgerData.countReceipts);
+  if (tabPaymentsCount) tabPaymentsCount.textContent = String(ledgerData.countPayments);
+  if (tabAdjustmentsCount) tabAdjustmentsCount.textContent = String(ledgerData.countAdjustments);
+  if (tabTransfersCount) tabTransfersCount.textContent = String(ledgerData.countTransfers);
+  if (tabReceivablesCount) tabReceivablesCount.textContent = String(receivablesData.totalCount);
+  if (tabPayablesCount) tabPayablesCount.textContent = String(payablesData.totalCount);
+  if (tabPartyCount) tabPartyCount.textContent = String(allParties.length);
+  if (tabAgeingCount) tabAgeingCount.textContent = String(receivablesData.totalCount + payablesData.totalCount);
+
+  // Update tab active classes
+  document.querySelectorAll('.ledger-nav-tab').forEach(tabBtn => {
+    tabBtn.classList.toggle('active', tabBtn.dataset.tab === ledgerTab);
+  });
+
+  // Toggle "+ Add Adjustment" button visibility
+  const addAdjBtn = document.getElementById('ledgerAddAdjustmentBtn');
+  if (addAdjBtn) {
+    addAdjBtn.style.display = ledgerTab === 'adjustments' ? 'inline-flex' : 'none';
+  }
+
+  // 3. Render Respective Table
+  const tableContainer = document.getElementById('ledgerTableContainer');
+  const recContainer = document.getElementById('ledgerReceivablesContainer');
+  const payContainer = document.getElementById('ledgerPayablesContainer');
+  const adjContainer = document.getElementById('ledgerAdjustmentsContainer');
+  const partyContainer = document.getElementById('ledgerPartyLedgersContainer');
+  const ageingContainer = document.getElementById('ledgerAgeingContainer');
+
+  const emptyState = document.getElementById('ledgerEmptyState');
+  const recEmptyState = document.getElementById('ledgerReceivablesEmptyState');
+  const payEmptyState = document.getElementById('ledgerPayablesEmptyState');
+  const adjEmptyState = document.getElementById('ledgerAdjustmentsEmptyState');
+
+  [tableContainer, recContainer, payContainer, adjContainer, partyContainer, ageingContainer, emptyState, recEmptyState, payEmptyState, adjEmptyState].forEach(el => {
+    if (el) el.style.display = 'none';
+  });
+
+  if (ledgerTab === 'receivables') {
+    if (receivablesData.items.length === 0) {
+      if (recEmptyState) recEmptyState.style.display = 'flex';
+    } else {
+      if (recContainer) recContainer.style.display = 'block';
+      renderVirtualReceivablesTable(receivablesData.items);
+    }
+    renderVirtualLedgerFooterInfo(receivablesData.items.length, 'Receivables');
+  } else if (ledgerTab === 'payables') {
+    if (payablesData.items.length === 0) {
+      if (payEmptyState) payEmptyState.style.display = 'flex';
+    } else {
+      if (payContainer) payContainer.style.display = 'block';
+      renderVirtualPayablesTable(payablesData.items);
+    }
+    renderVirtualLedgerFooterInfo(payablesData.items.length, 'Payables');
+  } else if (ledgerTab === 'party-ledgers') {
+    if (partyContainer) partyContainer.style.display = 'flex';
+    renderVirtualPartyLedgerView();
+    renderVirtualLedgerFooterInfo(allParties.length, 'Party Accounts');
+  } else if (ledgerTab === 'ageing') {
+    if (ageingContainer) ageingContainer.style.display = 'flex';
+    renderVirtualAgeingTable(ledgerAgeingType);
+    renderVirtualLedgerFooterInfo(receivablesData.items.length + payablesData.items.length, 'Accounts Analyzed');
+  } else if (ledgerTab === 'adjustments') {
+    const adjItems = ledgerData.filteredEntries.filter(e => e.type === 'ADJUSTMENT');
+    if (adjItems.length === 0) {
+      if (adjEmptyState) adjEmptyState.style.display = 'flex';
+    } else {
+      if (adjContainer) adjContainer.style.display = 'block';
+      renderVirtualAdjustmentsTable(adjItems);
+    }
+    renderVirtualLedgerFooterInfo(adjItems.length, 'Adjustments');
+  } else {
+    // All, Receipts, Payments, Transfers
+    if (ledgerData.filteredEntries.length === 0) {
+      if (emptyState) {
+        emptyState.style.display = 'flex';
+        const emptyTitle = document.getElementById('ledgerEmptyTitle');
+        const emptyDesc = document.getElementById('ledgerEmptyDesc');
+        if (emptyTitle && emptyDesc) {
+          if (ledgerData.rawCount === 0) {
+            emptyTitle.textContent = 'No reconciled transactions yet.';
+            emptyDesc.textContent = 'Transactions will appear here once bank activity has been processed and reconciled.';
+          } else {
+            emptyTitle.textContent = 'No transactions match filters';
+            emptyDesc.textContent = 'Try adjusting your search keywords, status filter, or date range.';
+          }
+        }
+      }
+    } else {
+      if (tableContainer) tableContainer.style.display = 'block';
+      renderVirtualLedgerTable(ledgerData.filteredEntries);
+    }
+    renderVirtualLedgerFooterInfo(ledgerData.filteredEntries.length, 'Transactions');
+  }
+}
+
+function renderVirtualLedgerHeader() {
+  const activeBank = corporateBanks.find(b => b.id === ledgerBankId);
+  const activeBankText = document.getElementById('ledgerActiveBankName');
+  if (activeBankText) {
+    if (corporateBanks.length === 0) {
+      activeBankText.textContent = 'No bank accounts available';
+    } else if (ledgerBankId === 'all') {
+      activeBankText.textContent = 'All Accounts';
+    } else if (activeBank) {
+      activeBankText.textContent = `${activeBank.name} ${activeBank.accNo}`;
+    }
+  }
+
+  const activePeriodText = document.getElementById('ledgerActivePeriodName');
+  if (activePeriodText) {
+    if (ledgerMonthId === 'all') {
+      activePeriodText.textContent = 'All Periods';
+    } else {
+      activePeriodText.textContent = monthLabelFromId(ledgerMonthId);
+    }
+  }
+
+  // Populate Bank Options List
+  const bankOptionsList = document.getElementById('ledgerBankOptionsList');
+  if (bankOptionsList) {
+    bankOptionsList.innerHTML = '';
+    if (corporateBanks.length === 0) {
+      bankOptionsList.innerHTML = '<div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">No bank accounts available</div>';
+    } else {
+      // "All Accounts" option
+      const allItem = document.createElement('div');
+      allItem.className = `bank-option-item ${ledgerBankId === 'all' ? 'active' : ''}`;
+      allItem.innerHTML = `
+        <div class="bank-option-info">
+          <div class="bank-option-title">All Corporate Accounts</div>
+          <div class="bank-option-sub">Consolidated Treasury View (${corporateBanks.length} desks)</div>
+        </div>
+        <span class="bank-option-badge">${ledgerBankId === 'all' ? 'Active' : 'Select'}</span>
+      `;
+      allItem.addEventListener('click', () => {
+        ledgerBankId = 'all';
+        const menu = document.getElementById('ledgerBankDropdownMenu');
+        if (menu) menu.style.display = 'none';
+        renderVirtualLedgerView();
+      });
+      bankOptionsList.appendChild(allItem);
+
+      corporateBanks.forEach(b => {
+        const isSelected = b.id === ledgerBankId;
+        const item = document.createElement('div');
+        item.className = `bank-option-item ${isSelected ? 'active' : ''}`;
+        item.innerHTML = `
+          <div class="bank-option-info">
+            <div class="bank-option-title">${escapeHtml(b.name)}</div>
+            <div class="bank-option-sub">${escapeHtml(b.type)} · ${escapeHtml(b.accNo)}</div>
+          </div>
+          <span class="bank-option-badge">${isSelected ? 'Active' : 'Select'}</span>
+        `;
+        item.addEventListener('click', () => {
+          ledgerBankId = b.id;
+          const menu = document.getElementById('ledgerBankDropdownMenu');
+          if (menu) menu.style.display = 'none';
+          renderVirtualLedgerView();
+        });
+        bankOptionsList.appendChild(item);
+      });
+    }
+  }
+
+  // Populate Period Options List
+  const periodOptionsList = document.getElementById('ledgerPeriodOptionsList');
+  if (periodOptionsList) {
+    periodOptionsList.innerHTML = '';
+    // Collect all unique months from statement sheets
+    const monthSet = new Set();
+    corporateBanks.forEach(b => {
+      (b.sheets || []).forEach(s => {
+        if (s.monthId) monthSet.add(s.monthId);
+      });
+    });
+
+    const months = Array.from(monthSet).sort().reverse();
+
+    // "All Periods" option
+    const allItem = document.createElement('div');
+    allItem.className = `bank-option-item ${ledgerMonthId === 'all' ? 'active' : ''}`;
+    allItem.innerHTML = `
+      <div class="bank-option-info">
+        <div class="bank-option-title">All Periods</div>
+        <div class="bank-option-sub">Lifetime Cumulative General Ledger</div>
+      </div>
+      <span class="bank-option-badge">${ledgerMonthId === 'all' ? 'Active' : 'Select'}</span>
+    `;
+    allItem.addEventListener('click', () => {
+      ledgerMonthId = 'all';
+      const menu = document.getElementById('ledgerPeriodDropdownMenu');
+      if (menu) menu.style.display = 'none';
+      renderVirtualLedgerView();
+    });
+    periodOptionsList.appendChild(allItem);
+
+    months.forEach(m => {
+      const isSelected = m === ledgerMonthId;
+      const item = document.createElement('div');
+      item.className = `bank-option-item ${isSelected ? 'active' : ''}`;
+      item.innerHTML = `
+        <div class="bank-option-info">
+          <div class="bank-option-title">${escapeHtml(monthLabelFromId(m))}</div>
+          <div class="bank-option-sub">${escapeHtml(m)} Statement Cycle</div>
+        </div>
+        <span class="bank-option-badge">${isSelected ? 'Active' : 'Select'}</span>
+      `;
+      item.addEventListener('click', () => {
+        ledgerMonthId = m;
+        const menu = document.getElementById('ledgerPeriodDropdownMenu');
+        if (menu) menu.style.display = 'none';
+        renderVirtualLedgerView();
+      });
+      periodOptionsList.appendChild(item);
+    });
+  }
+}
+
+function renderVirtualLedgerTable(entries) {
+  const tbody = document.getElementById('ledgerTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const totalPages = Math.ceil(entries.length / ledgerPageSize) || 1;
+  if (ledgerCurrentPage > totalPages) ledgerCurrentPage = totalPages;
+  if (ledgerCurrentPage < 1) ledgerCurrentPage = 1;
+
+  const startIdx = (ledgerCurrentPage - 1) * ledgerPageSize;
+  const pageEntries = entries.slice(startIdx, startIdx + ledgerPageSize);
+
+  pageEntries.forEach(entry => {
+    const tr = document.createElement('tr');
+    tr.id = `ledger-row-${entry.id}`;
+
+    let typeBadgeClass = 'badge-receipt';
+    if (entry.type === 'PAYMENT') typeBadgeClass = 'badge-payment';
+    else if (entry.type === 'TRANSFER') typeBadgeClass = 'badge-transfer';
+    else if (entry.type === 'BANK CHARGE') typeBadgeClass = 'badge-bank-charge';
+    else if (entry.type === 'ADJUSTMENT') typeBadgeClass = 'badge-adjustment';
+    else if (entry.type === 'REFUND') typeBadgeClass = 'badge-refund';
+
+    let statusBadgeClass = 'badge-reconciled';
+    if (entry.status === 'Pending') statusBadgeClass = 'badge-pending';
+    else if (entry.status === 'Matched') statusBadgeClass = 'badge-matched';
+    else if (entry.status === 'Exception') statusBadgeClass = 'badge-exception';
+
+    let docHtml = '—';
+    if (entry.docNo && entry.docNo !== '—') {
+      const isBill = entry.docType === 'bill';
+      docHtml = `<span class="ledger-doc-pill ${isBill ? 'doc-pill-bill' : ''}" title="${isBill ? 'Linked Vendor Bill' : 'Linked Customer Invoice'}">${escapeHtml(entry.docNo)}</span>`;
+    }
+
+    const inflowText = entry.inflow > 0 ? `<span style="color: #059669; font-weight: 600;" class="font-mono">${formatINR(entry.inflow)}</span>` : '—';
+    const outflowText = entry.outflow > 0 ? `<span style="color: #be123c; font-weight: 600;" class="font-mono">${formatINR(entry.outflow)}</span>` : '—';
+
+    tr.innerHTML = `
+      <td class="font-mono">${escapeHtml(entry.date)}</td>
+      <td><span class="ledger-type-badge ${typeBadgeClass}">${escapeHtml(entry.type)}</span></td>
+      <td>
+        <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(entry.particulars)}</div>
+        <div style="font-size: 11px; color: var(--text-muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(entry.narration)}">${escapeHtml(entry.narration)}</div>
+      </td>
+      <td>${docHtml}</td>
+      <td class="font-mono" style="font-size: 11.5px; color: var(--text-secondary);">${escapeHtml(entry.bankRef)}</td>
+      <td class="text-right">${inflowText}</td>
+      <td class="text-right">${outflowText}</td>
+      <td class="text-right font-mono font-bold" style="color: var(--text-primary);">${formatINR(entry.runningBalance)}</td>
+      <td><span class="ledger-status-badge ${statusBadgeClass}">${escapeHtml(entry.status)}</span></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-outline btn-sm" style="padding: 3px 8px; font-size: 11px;" title="View complete banking and reconciliation evidence">
+          View
+        </button>
+      </td>
+    `;
+
+    tr.addEventListener('click', () => {
+      openLedgerDetailDrawer(entry);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderVirtualReceivablesTable(items) {
+  const tbody = document.getElementById('ledgerReceivablesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.id = `rec-row-${item.id}`;
+
+    let statusPill = `<span class="ledger-status-badge badge-pending">Unpaid</span>`;
+    if (item.status === 'Paid') statusPill = `<span class="ledger-status-badge badge-reconciled">Settled</span>`;
+    else if (item.status === 'Partial') statusPill = `<span class="ledger-status-badge badge-matched">Partially Paid</span>`;
+
+    const bClass = item.bracket ? item.bracket.class : 'ageing-current';
+    const bLabel = item.bracket ? item.bracket.label : '0-30 Days';
+
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(item.customer)}</strong></td>
+      <td><span class="ledger-doc-pill font-mono">${escapeHtml(item.invoiceNo)}</span></td>
+      <td class="font-mono">${escapeHtml(item.invoiceDate)}</td>
+      <td class="text-right font-mono">${formatINR(item.invoiceAmount)}</td>
+      <td class="text-right font-mono" style="color: #059669;">${formatINR(item.amountReceived)}</td>
+      <td class="text-right font-mono font-bold" style="color: ${item.outstanding > 0 ? '#d97706' : '#059669'};">${formatINR(item.outstanding)}</td>
+      <td class="text-right font-mono" style="font-size: 11.5px;">${item.age || 0}d</td>
+      <td><span class="ageing-badge ${bClass}">${escapeHtml(bLabel)}</span></td>
+      <td>${statusPill}</td>
+      <td class="text-center">
+        <button type="button" class="btn btn-outline btn-sm rec-khata-btn" style="padding: 2px 7px; font-size: 11px;" title="Open customer statement of account">
+          Khata
+        </button>
+      </td>
+    `;
+
+    const khataBtn = tr.querySelector('.rec-khata-btn');
+    if (khataBtn) {
+      khataBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPartyLedger(item.customer);
+      });
+    }
+
+    tr.addEventListener('click', () => {
+      if (typeof openInvoiceDetailsModal === 'function') {
+        openInvoiceDetailsModal(item.raw);
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderVirtualPayablesTable(items) {
+  const tbody = document.getElementById('ledgerPayablesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.id = `pay-row-${item.id}`;
+
+    let statusPill = `<span class="ledger-status-badge badge-pending">Unpaid</span>`;
+    if (item.status === 'Paid') statusPill = `<span class="ledger-status-badge badge-reconciled">Paid</span>`;
+    else if (item.status === 'Partial') statusPill = `<span class="ledger-status-badge badge-matched">Partially Paid</span>`;
+
+    const bClass = item.bracket ? item.bracket.class : 'ageing-current';
+    const bLabel = item.bracket ? item.bracket.label : '0-30 Days';
+
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(item.supplier)}</strong></td>
+      <td><span class="ledger-doc-pill doc-pill-bill font-mono">${escapeHtml(item.billNo)}</span></td>
+      <td class="font-mono">${escapeHtml(item.billDate)}</td>
+      <td class="text-right font-mono">${formatINR(item.billAmount)}</td>
+      <td class="text-right font-mono" style="color: #be123c;">${formatINR(item.amountPaid)}</td>
+      <td class="text-right font-mono font-bold" style="color: ${item.outstanding > 0 ? '#d97706' : '#059669'};">${formatINR(item.outstanding)}</td>
+      <td class="text-right font-mono" style="font-size: 11.5px;">${item.age || 0}d</td>
+      <td><span class="ageing-badge ${bClass}">${escapeHtml(bLabel)}</span></td>
+      <td>${statusPill}</td>
+      <td class="text-center">
+        <button type="button" class="btn btn-outline btn-sm pay-khata-btn" style="padding: 2px 7px; font-size: 11px;" title="Open supplier statement of account">
+          Khata
+        </button>
+      </td>
+    `;
+
+    const khataBtn = tr.querySelector('.pay-khata-btn');
+    if (khataBtn) {
+      khataBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPartyLedger(item.supplier);
+      });
+    }
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderVirtualAdjustmentsTable(items) {
+  const tbody = document.getElementById('ledgerAdjustmentsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  items.forEach(entry => {
+    const tr = document.createElement('tr');
+    const isCredit = entry.inflow > 0;
+    const amt = isCredit ? entry.inflow : entry.outflow;
+
+    tr.innerHTML = `
+      <td class="font-mono">${escapeHtml(entry.date)}</td>
+      <td><span class="ledger-type-badge badge-adjustment">${escapeHtml(entry.type)}</span></td>
+      <td>
+        <div style="font-weight: 600;">${escapeHtml(entry.particulars)}</div>
+        <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(entry.narration)}</div>
+      </td>
+      <td class="font-mono" style="font-size: 11.5px;">${escapeHtml(entry.bankRef)}</td>
+      <td class="text-right font-mono" style="color: #be123c;">${!isCredit ? formatINR(amt) : '—'}</td>
+      <td class="text-right font-mono" style="color: #059669;">${isCredit ? formatINR(amt) : '—'}</td>
+      <td class="text-right font-mono font-bold">${formatINR(amt)}</td>
+      <td style="font-size: 11.5px;">${escapeHtml(entry.rawRow.createdBy || 'Controller')}</td>
+      <td><span class="ledger-status-badge badge-reconciled">${escapeHtml(entry.status)}</span></td>
+    `;
+
+    tr.addEventListener('click', () => {
+      openLedgerDetailDrawer(entry);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderVirtualLedgerFooterInfo(totalCount, label) {
+  const countText = document.getElementById('ledgerVisibleCountText');
+  const periodText = document.getElementById('ledgerPeriodFooterText');
+  const bankText = document.getElementById('ledgerBankFooterText');
+
+  if (countText) countText.innerHTML = `Showing <strong>${totalCount}</strong> ${escapeHtml(label.toLowerCase())}`;
+  if (periodText) periodText.textContent = ledgerMonthId === 'all' ? 'All Periods' : monthLabelFromId(ledgerMonthId);
+  if (bankText) {
+    const activeBank = corporateBanks.find(b => b.id === ledgerBankId);
+    bankText.textContent = ledgerBankId === 'all' ? 'All Accounts' : (activeBank ? `${activeBank.name} ${activeBank.accNo}` : 'Corporate Desk');
+  }
+
+  // Update pagination controls
+  const totalPages = Math.ceil(totalCount / ledgerPageSize) || 1;
+  const pageInfo = document.getElementById('ledgerPageCurrentInfo');
+  const prevBtn = document.getElementById('ledgerPrevPageBtn');
+  const nextBtn = document.getElementById('ledgerNextPageBtn');
+
+  if (pageInfo) pageInfo.textContent = `Page ${ledgerCurrentPage} of ${totalPages}`;
+  if (prevBtn) prevBtn.disabled = ledgerCurrentPage <= 1;
+  if (nextBtn) nextBtn.disabled = ledgerCurrentPage >= totalPages;
+}
+
+// Transaction Detail Drawer Interactions
+function openLedgerDetailDrawer(entry) {
+  activeDrawerTxn = entry;
+  const drawer = document.getElementById('ledgerDetailDrawer');
+  if (!drawer) return;
+
+  const isCredit = entry.inflow > 0;
+  const amt = isCredit ? entry.inflow : entry.outflow;
+
+  const amtEl = document.getElementById('ledgerDrawerAmount');
+  const dirLabel = document.getElementById('ledgerDrawerDirectionLabel');
+  const typeBadge = document.getElementById('ledgerDrawerTypeBadge');
+  const statusBadge = document.getElementById('ledgerDrawerStatusBadge');
+
+  if (amtEl) {
+    amtEl.textContent = `${isCredit ? '+' : '-'} ${formatINR(amt)}`;
+    amtEl.style.color = isCredit ? '#059669' : '#be123c';
+  }
+  if (dirLabel) {
+    dirLabel.textContent = isCredit ? 'INCOMING FINANCIAL EVIDENCE (INFLOW)' : 'OUTGOING FINANCIAL DISBURSEMENT (OUTFLOW)';
+  }
+
+  let typeBadgeClass = 'badge-receipt';
+  if (entry.type === 'PAYMENT') typeBadgeClass = 'badge-payment';
+  else if (entry.type === 'TRANSFER') typeBadgeClass = 'badge-transfer';
+  else if (entry.type === 'BANK CHARGE') typeBadgeClass = 'badge-bank-charge';
+  else if (entry.type === 'ADJUSTMENT') typeBadgeClass = 'badge-adjustment';
+  else if (entry.type === 'REFUND') typeBadgeClass = 'badge-refund';
+
+  let statusBadgeClass = 'badge-reconciled';
+  if (entry.status === 'Pending') statusBadgeClass = 'badge-pending';
+  else if (entry.status === 'Matched') statusBadgeClass = 'badge-matched';
+  else if (entry.status === 'Exception') statusBadgeClass = 'badge-exception';
+
+  if (typeBadge) {
+    typeBadge.className = `ledger-type-badge ${typeBadgeClass}`;
+    typeBadge.textContent = entry.type;
+  }
+  if (statusBadge) {
+    statusBadge.className = `ledger-status-badge ${statusBadgeClass}`;
+    statusBadge.textContent = entry.status;
+  }
+
+  // Banking Info
+  const dateEl = document.getElementById('ledgerDrawerDate');
+  const valDateEl = document.getElementById('ledgerDrawerValueDate');
+  const bankEl = document.getElementById('ledgerDrawerBank');
+  const refEl = document.getElementById('ledgerDrawerBankRef');
+  const narrEl = document.getElementById('ledgerDrawerNarration');
+  const sourceEl = document.getElementById('ledgerDrawerSourceFile');
+
+  if (dateEl) dateEl.textContent = entry.date || '—';
+  if (valDateEl) valDateEl.textContent = entry.rawRow.valueDate || entry.date || '—';
+  if (bankEl) bankEl.textContent = `${entry.bankName} (${entry.accountNo})`;
+  if (refEl) refEl.textContent = entry.bankRef || '—';
+  if (narrEl) narrEl.textContent = entry.narration || 'No bank narration provided.';
+  if (sourceEl) sourceEl.textContent = entry.sourceFile || 'Statement Upload';
+
+  // Accounting Linkage
+  const docNoEl = document.getElementById('ledgerDrawerDocNo');
+  const partyEl = document.getElementById('ledgerDrawerParty');
+  const docAmtEl = document.getElementById('ledgerDrawerDocAmount');
+  const diffEl = document.getElementById('ledgerDrawerDifference');
+  const reconResEl = document.getElementById('ledgerDrawerReconResult');
+
+  if (docNoEl) docNoEl.textContent = entry.docNo || '—';
+  if (partyEl) partyEl.textContent = entry.particulars || '—';
+  if (docAmtEl) docAmtEl.textContent = entry.docAmount ? formatINR(entry.docAmount) : '—';
+  if (diffEl) {
+    if (entry.docAmount) {
+      const diff = Math.abs(entry.docAmount - amt);
+      diffEl.textContent = formatINR(diff);
+      diffEl.style.color = diff === 0 ? '#059669' : '#d97706';
+    } else {
+      diffEl.textContent = '₹ 0';
+      diffEl.style.color = 'var(--text-muted)';
+    }
+  }
+  if (reconResEl) {
+    if (entry.status === 'Reconciled') {
+      reconResEl.innerHTML = `<span style="color: #059669; font-weight: 600;">✓ Explicitly matched with accounting ledger</span>`;
+    } else if (entry.status === 'Matched') {
+      reconResEl.innerHTML = `<span style="color: var(--ifimed-primary); font-weight: 600;">System Auto-Matched (Pending confirmation)</span>`;
+    } else if (entry.status === 'Exception') {
+      reconResEl.innerHTML = `<span style="color: var(--ifimed-red); font-weight: 600;">Discrepancy / Exception flagged</span>`;
+    } else {
+      reconResEl.innerHTML = `<span style="color: #d97706; font-weight: 600;">Pending mapping to invoice or bill</span>`;
+    }
+  }
+
+  // Audit Timeline (Genuine Events)
+  const timelineEl = document.getElementById('ledgerDrawerAuditTimeline');
+  if (timelineEl) {
+    timelineEl.innerHTML = '';
+    const events = [];
+
+    if (entry.mapping) {
+      events.push({
+        text: `Reconciled with ${entry.docNo} by ${entry.mapping.mappedBy || 'Accounts Controller'}`,
+        time: entry.mapping.mappedAt || 'Completed'
+      });
+    }
+
+    if (entry.isAdjustment) {
+      events.push({
+        text: `Journal adjustment posted by ${entry.rawRow.createdBy || 'Corporate Controller'}: ${entry.particulars}`,
+        time: entry.rawRow.createdAt ? new Date(entry.rawRow.createdAt).toLocaleString('en-GB') : entry.date
+      });
+    }
+
+    // Matching recent activities
+    const refUpper = String(entry.bankRef || '').toUpperCase();
+    const docUpper = String(entry.docNo || '').toUpperCase();
+    recentActivities.forEach(act => {
+      const txt = typeof act === 'string' ? act : (act.text || '');
+      if ((refUpper && txt.toUpperCase().includes(refUpper)) || (docUpper && docUpper !== '—' && txt.toUpperCase().includes(docUpper))) {
+        events.push({
+          text: txt,
+          time: act.meta || act.time || 'Logged'
+        });
+      }
+    });
+
+    if (events.length === 0) {
+      timelineEl.innerHTML = `<div class="timeline-empty-msg">No audit activity recorded.</div>`;
+    } else {
+      events.forEach(evt => {
+        const item = document.createElement('div');
+        item.className = 'timeline-event-item';
+        item.innerHTML = `
+          <div class="timeline-dot"></div>
+          <div>
+            <div style="font-weight: 500; color: var(--text-primary);">${escapeHtml(evt.text)}</div>
+            <div class="timeline-meta">${escapeHtml(evt.time)}</div>
+          </div>
+        `;
+        timelineEl.appendChild(item);
+      });
+    }
+  }
+
+  drawer.style.display = 'flex';
+}
+
+function closeLedgerDetailDrawer() {
+  activeDrawerTxn = null;
+  const drawer = document.getElementById('ledgerDetailDrawer');
+  if (drawer) drawer.style.display = 'none';
+}
+
+// Add Adjustment Modal Handlers
+function openAddAdjustmentModal() {
+  const modal = document.getElementById('addAdjustmentModal');
+  const bankSelect = document.getElementById('adjBankSelect');
+  const dateInput = document.getElementById('adjDate');
+  const form = document.getElementById('addAdjustmentForm');
+
+  if (form) form.reset();
+
+  if (bankSelect) {
+    bankSelect.innerHTML = '';
+    corporateBanks.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = `${b.name} (${b.accNo})`;
+      if (b.id === selectedBankId || b.id === ledgerBankId) opt.selected = true;
+      bankSelect.appendChild(opt);
+    });
+  }
+
+  if (dateInput) {
+    const today = new Date().toISOString().slice(0, 10);
+    dateInput.value = today;
+  }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeAddAdjustmentModal() {
+  const modal = document.getElementById('addAdjustmentModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function handleAdjustmentSubmit(e) {
+  e.preventDefault();
+  const bankId = document.getElementById('adjBankSelect').value;
+  const dateStr = document.getElementById('adjDate').value;
+  const type = document.getElementById('adjType').value;
+  const debitOrCredit = document.querySelector('input[name="adjDebitOrCredit"]:checked').value;
+  const amount = parseFloat(document.getElementById('adjAmount').value) || 0;
+  const reference = document.getElementById('adjReference').value.trim();
+  const description = document.getElementById('adjDescription').value.trim();
+
+  if (!bankId || !dateStr || !type || amount <= 0 || !description) {
+    showToast('Please provide bank, date, amount (> 0), and description reason', 'amber');
+    return;
+  }
+
+  const createdBy = currentAuthUser ? (currentAuthUser.user_metadata?.name || currentAuthUser.email) : 'IFIMED Treasury Controller';
+  const newAdj = {
+    id: `ADJ-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    bankId: bankId,
+    date: dateStr,
+    adjustmentType: type,
+    description: description,
+    reference: reference || `ADJ-${Date.now().toString().slice(-4)}`,
+    debitOrCredit: debitOrCredit,
+    amount: Math.round(amount * 100) / 100,
+    createdBy: createdBy,
+    status: 'Approved',
+    createdAt: new Date().toISOString()
+  };
+
+  appAdjustments.unshift(newAdj);
+
+  recentActivities.unshift({
+    text: `Adjustment posted: ${type} of ₹ ${amount.toLocaleString('en-IN')} (${debitOrCredit.toUpperCase()})`,
+    meta: `Audit Trail · Just now`
+  });
+
+  closeAddAdjustmentModal();
+  renderVirtualLedgerView();
+  await persistToSupabase();
+  showToast(`Adjustment of ₹ ${amount.toLocaleString('en-IN')} posted to General Ledger!`, 'success');
+}
+
+// Export Virtual Ledger
+function exportVirtualLedger(format) {
+  const ledgerData = getVirtualLedgerData();
+  const activeBank = corporateBanks.find(b => b.id === ledgerBankId);
+  const bankName = ledgerBankId === 'all' ? 'All_Accounts' : (activeBank ? activeBank.name.replace(/\s+/g, '_') : 'Corporate_Bank');
+  const periodLabel = ledgerMonthId === 'all' ? 'All_Periods' : ledgerMonthId;
+
+  if (format === 'excel') {
+    if (typeof XLSX === 'undefined') {
+      showToast('SheetJS Excel library is loading. Please try again.', 'amber');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Reconciled Transactions Ledger
+    const headers = [
+      ['IFIMED PHARMACEUTICALS PVT. LTD. — RECONCILED VIRTUAL LEDGER'],
+      [`Bank Account: ${ledgerBankId === 'all' ? 'All Corporate Desks' : (activeBank ? `${activeBank.name} (${activeBank.accNo})` : '')}`],
+      [`Period: ${ledgerMonthId === 'all' ? 'All Periods' : monthLabelFromId(ledgerMonthId)}`],
+      [`Opening Balance: ₹ ${ledgerData.openingBalance.toLocaleString('en-IN')}`, `Total Inflow: ₹ ${ledgerData.totalInflow.toLocaleString('en-IN')}`, `Total Outflow: ₹ ${ledgerData.totalOutflow.toLocaleString('en-IN')}`, `Closing Balance: ₹ ${ledgerData.closingBalance.toLocaleString('en-IN')}`],
+      [],
+      ['Date', 'Type', 'Particulars', 'Linked Document', 'Bank Reference', 'Inflow (₹)', 'Outflow (₹)', 'Running Balance (₹)', 'Status', 'Narration']
+    ];
+
+    const rows = ledgerData.filteredEntries.map(e => [
+      e.date,
+      e.type,
+      e.particulars,
+      e.docNo,
+      e.bankRef,
+      e.inflow || '',
+      e.outflow || '',
+      e.runningBalance,
+      e.status,
+      e.narration
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Virtual Ledger');
+
+    // Sheet 2: Receivables
+    const recData = getVirtualReceivablesData();
+    const recRows = [
+      ['CUSTOMER RECEIVABLES REGISTER'],
+      ['Total Invoiced: ₹ ' + recData.totalInvoiced.toLocaleString('en-IN'), 'Total Received: ₹ ' + recData.totalReceived.toLocaleString('en-IN'), 'Outstanding: ₹ ' + recData.totalOutstanding.toLocaleString('en-IN')],
+      [],
+      ['Customer', 'Invoice #', 'Invoice Date', 'Invoice Amount (₹)', 'Amount Received (₹)', 'Outstanding (₹)', 'Due Date', 'Status'],
+      ...recData.items.map(r => [
+        r.customer,
+        r.invoiceNo,
+        r.invoiceDate,
+        r.invoiceAmount,
+        r.amountReceived,
+        r.outstanding,
+        r.dueDate,
+        r.status
+      ])
+    ];
+    const wsRec = XLSX.utils.aoa_to_sheet(recRows);
+    XLSX.utils.book_append_sheet(wb, wsRec, 'Receivables');
+
+    // Sheet 3: Payables
+    const payData = getVirtualPayablesData();
+    const payRows = [
+      ['VENDOR PAYABLES REGISTER'],
+      ['Total Billed: ₹ ' + payData.totalBilled.toLocaleString('en-IN'), 'Total Paid: ₹ ' + payData.totalPaid.toLocaleString('en-IN'), 'Outstanding: ₹ ' + payData.totalOutstanding.toLocaleString('en-IN')],
+      [],
+      ['Supplier', 'Bill #', 'Bill Date', 'Bill Amount (₹)', 'Amount Paid (₹)', 'Outstanding (₹)', 'Due Date', 'Status'],
+      ...payData.items.map(p => [
+        p.supplier,
+        p.billNo,
+        p.billDate,
+        p.billAmount,
+        p.amountPaid,
+        p.outstanding,
+        p.dueDate,
+        p.status
+      ])
+    ];
+    const wsPay = XLSX.utils.aoa_to_sheet(payRows);
+    XLSX.utils.book_append_sheet(wb, wsPay, 'Payables');
+
+    const fileName = `IFIMED_Virtual_Ledger_${bankName}_${periodLabel}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    showToast(`Exported Virtual Ledger to ${fileName}!`, 'success');
+  } else if (format === 'pdf') {
+    window.print();
+  }
 }
 
 function renderVendorBillsCatalogModal() {
@@ -3790,10 +6993,13 @@ function renderCommandPaletteResults(term) {
     { title: 'Switch to Debit Mapping Desk', desc: 'Match outgoing debits to vendor bills', action: () => { switchView('bank-statements'); switchMappingMode('debit'); } },
     { title: 'Switch to Credit Mapping Desk', desc: 'Match incoming credits to sales invoices', action: () => { switchView('bank-statements'); switchMappingMode('credit'); } },
     { title: 'View Bank Statements', desc: 'Jump to reconciliation workspace', action: () => switchView('bank-statements') },
+    { title: 'View Virtual Ledger', desc: 'Inspect reconciled transactions, running balances & accounting ledger', action: () => switchView('virtual-ledger') },
+    { title: 'Post Accounting Adjustment', desc: 'Create auditable journal adjustment affecting General Ledger', action: () => { switchView('virtual-ledger'); openAddAdjustmentModal(); } },
+    { title: 'View Customer Invoices Desk', desc: 'Jump to sales invoices register & reconciliation settlement tracking', action: () => switchView('invoices') },
     { title: 'View Financial Dashboard', desc: 'Jump to executive analytics', action: () => switchView('dashboard') },
-    { title: 'Add Invoice Manually', desc: 'Create new pending customer sales invoice', action: () => { if (openAddInvoiceModalBtn) openAddInvoiceModalBtn.click(); } },
+    { title: 'Add Invoice Manually', desc: 'Create new pending customer sales invoice', action: () => openAddInvoiceModal() },
     { title: 'Add Vendor Bill Manually', desc: 'Create new pending supplier purchase bill', action: () => { if (openAddBillModalBtn) openAddBillModalBtn.click(); } },
-    { title: 'View Invoices Catalog', desc: 'Inspect available customer invoice records', action: () => { if (viewInvoicesBtn) viewInvoicesBtn.click(); } },
+    { title: 'View Invoices Catalog', desc: 'Inspect available customer invoice records', action: () => switchView('invoices') },
     { title: 'View Vendor Bills Catalog', desc: 'Inspect available vendor bills & expenses', action: () => { if (viewBillsBtn) viewBillsBtn.click(); } }
   ];
 
@@ -4061,6 +7267,25 @@ async function persistViaSupabaseClient(deletions = pendingDeletedSheets) {
       settled_amount: parseFloat(b.settledAmount) || 0
     })), { onConflict: 'id' });
   }
+  if (appAdjustments.length > 0) {
+    try {
+      await client.from('adjustments').upsert(appAdjustments.map(adj => ({
+        id: adj.id,
+        bank_id: adj.bankId,
+        date: adj.date,
+        adjustment_type: adj.adjustmentType,
+        description: adj.description,
+        reference: adj.reference,
+        debit_or_credit: adj.debitOrCredit,
+        amount: parseFloat(adj.amount) || 0,
+        created_by: adj.createdBy,
+        status: adj.status || 'Approved',
+        created_at: adj.createdAt || new Date().toISOString()
+      })), { onConflict: 'id' });
+    } catch (e) {
+      console.warn('Direct client adjustments upsert warning:', e);
+    }
+  }
 
   return true;
 }
@@ -4088,6 +7313,7 @@ async function persistToSupabase() {
         transactions: txnRows,
         invoices: appInvoices,
         bills: appVendorBills,
+        adjustments: appAdjustments,
         activities: recentActivities,
         deletedSheets: deletions,
         updatedAt: new Date().toISOString()
@@ -4161,6 +7387,7 @@ async function applyLoadedSupabaseState(state) {
   }
   if (Array.isArray(state.invoices)) appInvoices = state.invoices;
   if (Array.isArray(state.bills)) appVendorBills = state.bills;
+  if (Array.isArray(state.adjustments)) appAdjustments = state.adjustments;
   if (Array.isArray(state.activities)) recentActivities = state.activities;
   return true;
 }
@@ -4209,6 +7436,12 @@ async function loadViaSupabaseClient() {
   }
   const { data: invoices } = await client.from('invoices').select('*');
   const { data: bills } = await client.from('vendor_bills').select('*');
+  let adjustments = [];
+  try {
+    const { data: adjData } = await client.from('adjustments').select('*').order('date', { ascending: false });
+    if (adjData) adjustments = adjData;
+  } catch (e) {}
+
   return {
     banks: formatted,
     invoices: (invoices || []).map(inv => ({
@@ -4228,6 +7461,19 @@ async function loadViaSupabaseClient() {
       date: b.date,
       status: b.status,
       settledAmount: parseFloat(b.settled_amount) || 0
+    })),
+    adjustments: (adjustments || []).map(adj => ({
+      id: adj.id,
+      bankId: adj.bank_id,
+      date: adj.date,
+      adjustmentType: adj.adjustment_type,
+      description: adj.description,
+      reference: adj.reference,
+      debitOrCredit: adj.debit_or_credit,
+      amount: parseFloat(adj.amount) || 0,
+      createdBy: adj.created_by,
+      status: adj.status,
+      createdAt: adj.created_at
     })),
     activities: []
   };
@@ -4301,6 +7547,14 @@ function renderAll(autoPersist = true) {
   renderCreditTrendChart();
   if (totalInvoicesCountBadge) totalInvoicesCountBadge.textContent = `${appInvoices.length} Invoices`;
   if (totalBillsCountBadge) totalBillsCountBadge.textContent = `${appVendorBills.length} Vendor Bills`;
+  updateInvoicesBadge();
+  if (currentActiveView === 'invoices') {
+    renderInvoicesView();
+  } else if (currentActiveView === 'dashboard') {
+    renderDashboardView();
+  } else if (currentActiveView === 'virtual-ledger' || currentActiveView === 'ledger') {
+    renderVirtualLedgerView();
+  }
   if (autoPersist) {
     debouncedPersistToSupabase();
   }
@@ -4326,13 +7580,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (navDashboard) navDashboard.addEventListener('click', () => switchView('dashboard'));
+  if (navInvoices) navInvoices.addEventListener('click', () => switchView('invoices'));
   if (navBankStatements) navBankStatements.addEventListener('click', () => switchView('bank-statements'));
+  if (navVirtualLedger) navVirtualLedger.addEventListener('click', () => switchView('virtual-ledger'));
+
   const breadcrumbDashboard = document.getElementById('breadcrumbDashboard');
   if (breadcrumbDashboard) {
     breadcrumbDashboard.addEventListener('click', (e) => {
       e.preventDefault();
       switchView('dashboard');
     });
+  }
+
+  const breadcrumbDashboardFromInv = document.getElementById('breadcrumbDashboardFromInv');
+  if (breadcrumbDashboardFromInv) {
+    breadcrumbDashboardFromInv.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView('dashboard');
+    });
+  }
+
+  const breadcrumbDashboardFromLedger = document.getElementById('breadcrumbDashboardFromLedger');
+  if (breadcrumbDashboardFromLedger) {
+    breadcrumbDashboardFromLedger.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView('dashboard');
+    });
+  }
+
+  const dashInvoicesKpiCard = document.getElementById('dashInvoicesKpiCard');
+  if (dashInvoicesKpiCard) {
+    dashInvoicesKpiCard.addEventListener('click', () => switchView('invoices'));
   }
 
   // 2. Desk Mode Switcher Tabs (Credits vs Debits)
@@ -4389,23 +7667,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (autoDetectBanksBtn) {
-    autoDetectBanksBtn.addEventListener('click', async (e) => {
+  // Statement Rejection Modal listeners
+  if (closeRejectionModalBtn) {
+    closeRejectionModalBtn.addEventListener('click', () => closeStatementRejectionPopup(true));
+  }
+  if (rejectionDismissBtn) {
+    rejectionDismissBtn.addEventListener('click', () => closeStatementRejectionPopup(true));
+  }
+  if (statementRejectionModal) {
+    statementRejectionModal.addEventListener('click', (e) => {
+      if (e.target === statementRejectionModal) closeStatementRejectionPopup(true);
+    });
+  }
+  if (rejectionActionBtn) {
+    rejectionActionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      autoDetectBanksBtn.disabled = true;
-      try { await autoDetectBankAccounts(true); }
-      finally { autoDetectBanksBtn.disabled = false; }
+      if (typeof currentRejectionAction === 'function') {
+        currentRejectionAction();
+      } else {
+        closeStatementRejectionPopup(true);
+      }
     });
   }
 
-  if (detectStatementsBtn) {
-    detectStatementsBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      detectStatementsBtn.disabled = true;
-      try { await autoDetectBankAccounts(true); }
-      finally { detectStatementsBtn.disabled = false; }
-    });
-  }
 
   document.addEventListener('click', (e) => {
     if (bankDropdownMenu && !bankDropdownMenu.contains(e.target) && e.target !== bankSelectorBtn) {
@@ -4528,13 +7812,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. Manual Customer Invoice Modal
+  // 7. Manual Customer Invoice Modal (Add / Edit)
   if (openAddInvoiceModalBtn) {
-    openAddInvoiceModalBtn.addEventListener('click', () => {
-      if (addInvoiceModal) addInvoiceModal.style.display = 'flex';
-      const noInput = document.getElementById('newInvNo');
-      if (noInput) noInput.focus();
-    });
+    openAddInvoiceModalBtn.addEventListener('click', () => openAddInvoiceModal());
   }
 
   const closeInvModal = () => { if (addInvoiceModal) addInvoiceModal.style.display = 'none'; };
@@ -4542,32 +7822,173 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cancelAddInvoiceBtn) cancelAddInvoiceBtn.addEventListener('click', closeInvModal);
 
   if (addInvoiceForm) {
-    addInvoiceForm.addEventListener('submit', (e) => {
+    addInvoiceForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const origNo = document.getElementById('editInvoiceOriginalNo') ? document.getElementById('editInvoiceOriginalNo').value.trim() : '';
       const no = document.getElementById('newInvNo').value.trim();
       const amt = parseFloat(document.getElementById('newInvAmount').value) || 0;
       const cust = document.getElementById('newInvCustomer').value.trim();
+      const gstin = document.getElementById('newInvGstin') ? document.getElementById('newInvGstin').value.trim() : '';
       const dt = document.getElementById('newInvDate').value.trim() || '19 Sep 2026';
       const cat = document.getElementById('newInvCategory').value.trim() || 'General Pharma Supply';
 
-      if (!no || !amt || !cust) return;
+      if (!no || !amt || !cust) {
+        showToast('Please enter Invoice #, Amount and Customer Name', 'amber');
+        return;
+      }
 
-      appInvoices.unshift({
-        invoiceNo: no,
-        guestName: cust,
-        amount: amt,
-        date: dt,
-        category: cat
-      });
+      if (origNo) {
+        // Edit mode
+        const existingIdx = appInvoices.findIndex(i => i.invoiceNo.toLowerCase() === origNo.toLowerCase());
+        if (existingIdx !== -1) {
+          appInvoices[existingIdx].invoiceNo = no;
+          appInvoices[existingIdx].guestName = cust;
+          appInvoices[existingIdx].amount = amt;
+          appInvoices[existingIdx].date = dt;
+          appInvoices[existingIdx].category = cat;
+          if (gstin) appInvoices[existingIdx].gstin = gstin;
 
-      addInvoiceForm.reset();
+          // If invoice number changed, propagate to linked transactions
+          if (origNo.toLowerCase() !== no.toLowerCase()) {
+            (corporateBanks || []).forEach(bank => {
+              (bank.sheets || []).forEach(sheet => {
+                (sheet.records || []).forEach(row => {
+                  if (row.status === 'mapped' && row.mapping) {
+                    const doc = String(row.mapping.invoiceNo || row.mapping.billNo || '').toLowerCase();
+                    if (doc === origNo.toLowerCase()) {
+                      row.mapping.invoiceNo = no;
+                      row.mapping.guestName = cust;
+                    }
+                  }
+                });
+              });
+            });
+          }
+          showToast(`Invoice ${no} updated successfully!`);
+        }
+      } else {
+        // Create mode
+        if (appInvoices.some(i => i.invoiceNo.toLowerCase() === no.toLowerCase())) {
+          showToast(`Invoice ${no} already exists in catalog!`, 'amber');
+          return;
+        }
+        appInvoices.unshift({
+          id: no,
+          invoiceNo: no,
+          guestName: cust,
+          amount: amt,
+          date: dt,
+          category: cat,
+          gstin: gstin,
+          status: 'Unpaid',
+          settledAmount: 0
+        });
+        showToast(`Invoice ${no} (${cust}) successfully registered!`);
+      }
+
       closeInvModal();
       renderAll();
-      showToast(`Invoice ${no} (${cust}) successfully registered!`);
+      if (currentActiveView === 'invoices') renderInvoicesView();
+      await persistToSupabase();
     });
   }
 
-  // 8. Invoice CSV Upload
+  // 8. Invoices Desk Header & Empty Actions
+  const invoicesAddNewBtn = document.getElementById('invoicesAddNewBtn');
+  const emptyAddInvoiceBtn = document.getElementById('emptyAddInvoiceBtn');
+  if (invoicesAddNewBtn) invoicesAddNewBtn.addEventListener('click', openAddInvoiceModal);
+  if (emptyAddInvoiceBtn) emptyAddInvoiceBtn.addEventListener('click', openAddInvoiceModal);
+
+  const invoicesUploadCsvBtn = document.getElementById('invoicesUploadCsvBtn');
+  const emptyUploadInvoiceBtn = document.getElementById('emptyUploadInvoiceBtn');
+  if (invoicesUploadCsvBtn && invoiceCsvInput) {
+    invoicesUploadCsvBtn.addEventListener('click', () => invoiceCsvInput.click());
+  }
+  if (emptyUploadInvoiceBtn && invoiceCsvInput) {
+    emptyUploadInvoiceBtn.addEventListener('click', () => invoiceCsvInput.click());
+  }
+
+  // Invoices Desk Export Dropdown (Excel & CSV)
+  const invoicesExportDropdownBtn = document.getElementById('invoicesExportDropdownBtn');
+  const invoicesExportMenu = document.getElementById('invoicesExportMenu');
+  const invoicesExportExcelBtn = document.getElementById('invoicesExportExcelBtn');
+  const invoicesExportCsvBtn = document.getElementById('invoicesExportCsvBtn');
+
+  if (invoicesExportDropdownBtn && invoicesExportMenu) {
+    invoicesExportDropdownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = invoicesExportMenu.style.display !== 'none';
+      invoicesExportMenu.style.display = isVisible ? 'none' : 'block';
+      invoicesExportDropdownBtn.setAttribute('aria-expanded', String(!isVisible));
+    });
+  }
+
+  if (invoicesExportExcelBtn) {
+    invoicesExportExcelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (invoicesExportMenu) invoicesExportMenu.style.display = 'none';
+      if (invoicesExportDropdownBtn) invoicesExportDropdownBtn.setAttribute('aria-expanded', 'false');
+      exportInvoicesToExcel();
+    });
+  }
+
+  if (invoicesExportCsvBtn) {
+    invoicesExportCsvBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (invoicesExportMenu) invoicesExportMenu.style.display = 'none';
+      if (invoicesExportDropdownBtn) invoicesExportDropdownBtn.setAttribute('aria-expanded', 'false');
+      exportInvoicesToCsv();
+    });
+  }
+
+  // Invoices Desk Toolbar: Search, Filters, Sort
+  const invoicesSearchInput = document.getElementById('invoicesSearchInput');
+  const invoicesSearchClear = document.getElementById('invoicesSearchClear');
+  if (invoicesSearchInput) {
+    invoicesSearchInput.addEventListener('input', () => {
+      invoicesSearch = invoicesSearchInput.value;
+      if (invoicesSearchClear) invoicesSearchClear.style.display = invoicesSearch ? 'block' : 'none';
+      renderInvoicesView();
+    });
+  }
+  if (invoicesSearchClear) {
+    invoicesSearchClear.addEventListener('click', () => {
+      invoicesSearch = '';
+      if (invoicesSearchInput) invoicesSearchInput.value = '';
+      invoicesSearchClear.style.display = 'none';
+      renderInvoicesView();
+    });
+  }
+
+  const invoicesSortSelect = document.getElementById('invoicesSortSelect');
+  if (invoicesSortSelect) {
+    invoicesSortSelect.addEventListener('change', () => {
+      invoicesSort = invoicesSortSelect.value;
+      renderInvoicesView();
+    });
+  }
+
+  const invFilterBtns = document.querySelectorAll('.inv-filter-btn');
+  invFilterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      invFilterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      invoicesFilter = btn.getAttribute('data-filter') || 'all';
+      renderInvoicesView();
+    });
+  });
+
+  // Invoice Details Modal Close
+  const closeInvoiceDetailsBtn = document.getElementById('closeInvoiceDetailsBtn');
+  const doneInvoiceDetailsBtn = document.getElementById('doneInvoiceDetailsBtn');
+  const closeDetailsModal = () => {
+    const modal = document.getElementById('invoiceDetailsModal');
+    if (modal) modal.style.display = 'none';
+  };
+  if (closeInvoiceDetailsBtn) closeInvoiceDetailsBtn.addEventListener('click', closeDetailsModal);
+  if (doneInvoiceDetailsBtn) doneInvoiceDetailsBtn.addEventListener('click', closeDetailsModal);
+
+  // 9. Invoice CSV Upload
   if (openUploadInvoiceCsvBtn && invoiceCsvInput) {
     openUploadInvoiceCsvBtn.addEventListener('click', () => invoiceCsvInput.click());
   }
@@ -4576,14 +7997,16 @@ document.addEventListener('DOMContentLoaded', () => {
     invoiceCsvInput.addEventListener('change', () => {
       if (invoiceCsvInput.files && invoiceCsvInput.files.length > 0) {
         const file = invoiceCsvInput.files[0];
-        showToast(`Reading customer invoices: ${file.name}...`, 'info');
+        const isXls = /\.(xlsx|xls|xlsm|xlsb)$/i.test(file.name);
+        showToast(`Reading customer invoices (${isXls ? 'Excel' : 'CSV'}): ${file.name}...`, 'info');
         readStatementFile(file, async (content) => {
           try {
             await processInvoiceCsv(content);
             if (typeof renderInvoicesCatalogModal === 'function') renderInvoicesCatalogModal();
+            if (typeof renderInvoicesView === 'function') renderInvoicesView();
           } catch (err) {
             console.error('Error processing customer invoices:', err);
-            showToast(`Error processing invoice CSV: ${err.message}`, 'amber');
+            showToast(`Error processing invoice file: ${err.message}`, 'amber');
           }
         });
         setTimeout(() => {
@@ -4593,11 +8016,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. Invoices Catalog Modal
+  // 10. Invoices Catalog Modal
   if (viewInvoicesBtn) {
     viewInvoicesBtn.addEventListener('click', () => {
-      if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'flex';
-      renderInvoicesCatalogModal();
+      switchView('invoices');
     });
   }
 
@@ -4697,7 +8119,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (billCatalogSearch) billCatalogSearch.addEventListener('input', renderVendorBillsCatalogModal);
 
   // Universal Modal Backdrop Click to Close (Never get trapped)
-  [addInvoiceModal, addBillModal, addBankModal, invoicesCatalogModal, billsCatalogModal, unlinkModal, commandPaletteModal].forEach(modal => {
+  const invoiceDetailsModal = document.getElementById('invoiceDetailsModal');
+  const addAdjustmentModal = document.getElementById('addAdjustmentModal');
+  [addInvoiceModal, invoiceDetailsModal, addBillModal, addBankModal, invoicesCatalogModal, billsCatalogModal, unlinkModal, commandPaletteModal, addAdjustmentModal].forEach(modal => {
     if (modal) {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -4781,11 +8205,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') {
       closeCommandPalette();
       if (addInvoiceModal) addInvoiceModal.style.display = 'none';
+      if (invoiceDetailsModal) invoiceDetailsModal.style.display = 'none';
       if (addBillModal) addBillModal.style.display = 'none';
       if (addBankModal) addBankModal.style.display = 'none';
       if (invoicesCatalogModal) invoicesCatalogModal.style.display = 'none';
       if (billsCatalogModal) billsCatalogModal.style.display = 'none';
       if (unlinkModal) unlinkModal.style.display = 'none';
+      if (addAdjustmentModal) addAdjustmentModal.style.display = 'none';
+      closeLedgerDetailDrawer();
       if (deleteBankModal) closeDeleteBankModal();
       const sampleStatementsModal = document.getElementById('sampleStatementsModal');
       if (sampleStatementsModal) sampleStatementsModal.style.display = 'none';
@@ -4946,8 +8373,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 18. Initialize Virtual Ledger Listeners & Controls
+  setupVirtualLedgerListeners();
+
   // Initial Boot
   renderAll(false);
+  parseInitialRoute(false);
 
   // Initialize Supabase Auth Desk Listeners
   setupSupabaseAuthListeners();
@@ -4963,6 +8394,375 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// Setup Virtual Ledger Listeners & User Interactions
+function setupVirtualLedgerListeners() {
+  // 1. Bank Selector Dropdown
+  const ledgerBankSelectorBtn = document.getElementById('ledgerBankSelectorBtn');
+  const ledgerBankDropdownMenu = document.getElementById('ledgerBankDropdownMenu');
+  if (ledgerBankSelectorBtn && ledgerBankDropdownMenu) {
+    ledgerBankSelectorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = ledgerBankDropdownMenu.style.display === 'block';
+      ledgerBankDropdownMenu.style.display = open ? 'none' : 'block';
+      ledgerBankSelectorBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      const periodMenu = document.getElementById('ledgerPeriodDropdownMenu');
+      const exportMenu = document.getElementById('ledgerExportMenu');
+      if (periodMenu) periodMenu.style.display = 'none';
+      if (exportMenu) exportMenu.style.display = 'none';
+      if (!open) renderVirtualLedgerHeader();
+    });
+  }
+
+  // 2. Period Selector Dropdown
+  const ledgerPeriodSelectorBtn = document.getElementById('ledgerPeriodSelectorBtn');
+  const ledgerPeriodDropdownMenu = document.getElementById('ledgerPeriodDropdownMenu');
+  if (ledgerPeriodSelectorBtn && ledgerPeriodDropdownMenu) {
+    ledgerPeriodSelectorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = ledgerPeriodDropdownMenu.style.display === 'block';
+      ledgerPeriodDropdownMenu.style.display = open ? 'none' : 'block';
+      ledgerPeriodSelectorBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      const bankMenu = document.getElementById('ledgerBankDropdownMenu');
+      const exportMenu = document.getElementById('ledgerExportMenu');
+      if (bankMenu) bankMenu.style.display = 'none';
+      if (exportMenu) exportMenu.style.display = 'none';
+      if (!open) renderVirtualLedgerHeader();
+    });
+  }
+
+  // 3. Export Menu
+  const ledgerExportBtn = document.getElementById('ledgerExportBtn');
+  const ledgerExportMenu = document.getElementById('ledgerExportMenu');
+  const ledgerExportExcelBtn = document.getElementById('ledgerExportExcelBtn');
+  const ledgerExportPdfBtn = document.getElementById('ledgerExportPdfBtn');
+
+  if (ledgerExportBtn && ledgerExportMenu) {
+    ledgerExportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = ledgerExportMenu.style.display === 'block';
+      ledgerExportMenu.style.display = open ? 'none' : 'block';
+      ledgerExportBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      const bankMenu = document.getElementById('ledgerBankDropdownMenu');
+      const periodMenu = document.getElementById('ledgerPeriodDropdownMenu');
+      if (bankMenu) bankMenu.style.display = 'none';
+      if (periodMenu) periodMenu.style.display = 'none';
+    });
+  }
+
+  if (ledgerExportExcelBtn) {
+    ledgerExportExcelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (ledgerExportMenu) ledgerExportMenu.style.display = 'none';
+      if (ledgerExportBtn) ledgerExportBtn.setAttribute('aria-expanded', 'false');
+      exportVirtualLedger('excel');
+    });
+  }
+
+  if (ledgerExportPdfBtn) {
+    ledgerExportPdfBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (ledgerExportMenu) ledgerExportMenu.style.display = 'none';
+      if (ledgerExportBtn) ledgerExportBtn.setAttribute('aria-expanded', 'false');
+      exportVirtualLedger('pdf');
+    });
+  }
+
+  // Close dropdown menus on outside click
+  document.addEventListener('click', (e) => {
+    if (invoicesExportMenu && !invoicesExportMenu.contains(e.target) && e.target !== invoicesExportDropdownBtn && (!invoicesExportDropdownBtn || !invoicesExportDropdownBtn.contains(e.target))) {
+      invoicesExportMenu.style.display = 'none';
+      if (invoicesExportDropdownBtn) invoicesExportDropdownBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (ledgerBankDropdownMenu && !ledgerBankDropdownMenu.contains(e.target) && e.target !== ledgerBankSelectorBtn && (!ledgerBankSelectorBtn || !ledgerBankSelectorBtn.contains(e.target))) {
+      ledgerBankDropdownMenu.style.display = 'none';
+      if (ledgerBankSelectorBtn) ledgerBankSelectorBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (ledgerPeriodDropdownMenu && !ledgerPeriodDropdownMenu.contains(e.target) && e.target !== ledgerPeriodSelectorBtn && (!ledgerPeriodSelectorBtn || !ledgerPeriodSelectorBtn.contains(e.target))) {
+      ledgerPeriodDropdownMenu.style.display = 'none';
+      if (ledgerPeriodSelectorBtn) ledgerPeriodSelectorBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (ledgerExportMenu && !ledgerExportMenu.contains(e.target) && e.target !== ledgerExportBtn && (!ledgerExportBtn || !ledgerExportBtn.contains(e.target))) {
+      ledgerExportMenu.style.display = 'none';
+      if (ledgerExportBtn) ledgerExportBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // 4. Sub-view Tabs (All, Receipts, Payments, Adjustments, Transfers, Receivables, Payables)
+  document.querySelectorAll('.ledger-nav-tab').forEach(tabBtn => {
+    tabBtn.addEventListener('click', () => {
+      ledgerTab = tabBtn.dataset.tab || 'all';
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  });
+
+  // 5. Toolbar & Filters
+  const searchInput = document.getElementById('ledgerSearchInput');
+  const searchClear = document.getElementById('ledgerSearchClear');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      ledgerSearchQuery = searchInput.value;
+      if (searchClear) searchClear.style.display = ledgerSearchQuery ? 'block' : 'none';
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+  if (searchClear && searchInput) {
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      ledgerSearchQuery = '';
+      searchClear.style.display = 'none';
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+
+  const statusSelect = document.getElementById('ledgerStatusSelect');
+  if (statusSelect) {
+    statusSelect.addEventListener('change', () => {
+      ledgerStatusFilter = statusSelect.value;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+
+  const dateFrom = document.getElementById('ledgerDateFrom');
+  const dateTo = document.getElementById('ledgerDateTo');
+  if (dateFrom) {
+    dateFrom.addEventListener('change', () => {
+      ledgerDateFrom = dateFrom.value;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+  if (dateTo) {
+    dateTo.addEventListener('change', () => {
+      ledgerDateTo = dateTo.value;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+
+  const minAmt = document.getElementById('ledgerMinAmount');
+  const maxAmt = document.getElementById('ledgerMaxAmount');
+  if (minAmt) {
+    minAmt.addEventListener('input', () => {
+      ledgerMinAmount = minAmt.value ? parseFloat(minAmt.value) : null;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+  if (maxAmt) {
+    maxAmt.addEventListener('input', () => {
+      ledgerMaxAmount = maxAmt.value ? parseFloat(maxAmt.value) : null;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+
+  const resetFiltersBtn = document.getElementById('ledgerResetFiltersBtn');
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener('click', () => {
+      ledgerSearchQuery = '';
+      ledgerStatusFilter = 'all';
+      ledgerDateFrom = '';
+      ledgerDateTo = '';
+      ledgerMinAmount = null;
+      ledgerMaxAmount = null;
+      ledgerCurrentPage = 1;
+      if (searchInput) searchInput.value = '';
+      if (searchClear) searchClear.style.display = 'none';
+      if (statusSelect) statusSelect.value = 'all';
+      if (dateFrom) dateFrom.value = '';
+      if (dateTo) dateTo.value = '';
+      if (minAmt) minAmt.value = '';
+      if (maxAmt) maxAmt.value = '';
+      renderVirtualLedgerView();
+    });
+  }
+
+  const addAdjBtn = document.getElementById('ledgerAddAdjustmentBtn');
+  if (addAdjBtn) {
+    addAdjBtn.addEventListener('click', openAddAdjustmentModal);
+  }
+
+  const retryBtn = document.getElementById('ledgerRetryBtn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      const errBanner = document.getElementById('ledgerErrorState');
+      if (errBanner) errBanner.style.display = 'none';
+      renderVirtualLedgerView();
+    });
+  }
+
+  // 6. Pagination
+  const prevPageBtn = document.getElementById('ledgerPrevPageBtn');
+  const nextPageBtn = document.getElementById('ledgerNextPageBtn');
+  const pageSizeSelect = document.getElementById('ledgerPageSizeSelect');
+
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener('click', () => {
+      if (ledgerCurrentPage > 1) {
+        ledgerCurrentPage--;
+        renderVirtualLedgerView();
+      }
+    });
+  }
+
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener('click', () => {
+      ledgerCurrentPage++;
+      renderVirtualLedgerView();
+    });
+  }
+
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener('change', () => {
+      ledgerPageSize = parseInt(pageSizeSelect.value) || 25;
+      ledgerCurrentPage = 1;
+      renderVirtualLedgerView();
+    });
+  }
+
+  // 7. Transaction Detail Drawer
+  const drawerCloseIcon = document.getElementById('ledgerDrawerCloseIcon');
+  const drawerCloseBtn = document.getElementById('ledgerDrawerCloseBtn');
+  const detailDrawer = document.getElementById('ledgerDetailDrawer');
+  const goSourceBtn = document.getElementById('ledgerDrawerGoSourceBtn');
+  const copyRefBtn = document.getElementById('ledgerDrawerCopyRefBtn');
+
+  if (drawerCloseIcon) drawerCloseIcon.addEventListener('click', closeLedgerDetailDrawer);
+  if (drawerCloseBtn) drawerCloseBtn.addEventListener('click', closeLedgerDetailDrawer);
+
+  if (detailDrawer) {
+    detailDrawer.addEventListener('click', (e) => {
+      if (e.target === detailDrawer) closeLedgerDetailDrawer();
+    });
+  }
+
+  if (goSourceBtn) {
+    goSourceBtn.addEventListener('click', () => {
+      if (activeDrawerTxn && activeDrawerTxn.bankId) {
+        selectedBankId = activeDrawerTxn.bankId;
+      }
+      closeLedgerDetailDrawer();
+      switchView('bank-statements');
+    });
+  }
+
+  if (copyRefBtn) {
+    copyRefBtn.addEventListener('click', () => {
+      if (activeDrawerTxn && activeDrawerTxn.bankRef && activeDrawerTxn.bankRef !== '—') {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(activeDrawerTxn.bankRef).then(() => {
+            showToast(`Copied Bank Reference: ${activeDrawerTxn.bankRef}`);
+          }).catch(() => {
+            showToast(`Reference: ${activeDrawerTxn.bankRef}`);
+          });
+        } else {
+          showToast(`Reference: ${activeDrawerTxn.bankRef}`);
+        }
+      }
+    });
+  }
+
+  // 8. Add Adjustment Modal
+  const closeAddAdjModalBtn = document.getElementById('closeAddAdjustmentModalBtn');
+  const cancelAddAdjBtn = document.getElementById('cancelAddAdjustmentBtn');
+  const addAdjModal = document.getElementById('addAdjustmentModal');
+  const addAdjForm = document.getElementById('addAdjustmentForm');
+
+  if (closeAddAdjModalBtn) closeAddAdjModalBtn.addEventListener('click', closeAddAdjustmentModal);
+  if (cancelAddAdjBtn) cancelAddAdjBtn.addEventListener('click', closeAddAdjustmentModal);
+
+  if (addAdjModal) {
+    addAdjModal.addEventListener('click', (e) => {
+      if (e.target === addAdjModal) closeAddAdjustmentModal();
+    });
+  }
+
+  if (addAdjForm) {
+    addAdjForm.addEventListener('submit', handleAdjustmentSubmit);
+  }
+
+  // 9. Party Ledgers & Pharma Ageing Listeners
+  const partySelect = document.getElementById('ledgerPartySelect');
+  if (partySelect) {
+    partySelect.addEventListener('change', () => {
+      ledgerSelectedParty = partySelect.value;
+      renderVirtualPartyLedgerView();
+    });
+  }
+
+  const partyExportBtn = document.getElementById('ledgerPartyExportBtn');
+  if (partyExportBtn) {
+    partyExportBtn.addEventListener('click', () => {
+      exportPartyLedgerToExcel(ledgerSelectedParty);
+    });
+  }
+
+  const partyPrintBtn = document.getElementById('ledgerPartyPrintBtn');
+  if (partyPrintBtn) {
+    partyPrintBtn.addEventListener('click', () => {
+      window.print();
+    });
+  }
+
+  const ageingToggleRecBtn = document.getElementById('ageingToggleReceivablesBtn');
+  const ageingTogglePayBtn = document.getElementById('ageingTogglePayablesBtn');
+  if (ageingToggleRecBtn) {
+    ageingToggleRecBtn.addEventListener('click', () => {
+      ledgerAgeingType = 'receivables';
+      renderVirtualAgeingTable('receivables');
+    });
+  }
+  if (ageingTogglePayBtn) {
+    ageingTogglePayBtn.addEventListener('click', () => {
+      ledgerAgeingType = 'payables';
+      renderVirtualAgeingTable('payables');
+    });
+  }
+
+  // 9. Empty States Action Buttons
+  const emptyGoBankBtn = document.getElementById('ledgerEmptyGoBankBtn');
+  const emptyGoInvoicesBtn = document.getElementById('ledgerEmptyGoInvoicesBtn');
+  const emptyGoInvoicesFromRecBtn = document.getElementById('ledgerEmptyGoInvoicesFromRecBtn');
+  const emptyGoBillsBtn = document.getElementById('ledgerEmptyGoBillsBtn');
+  const emptyAddAdjBtn = document.getElementById('ledgerEmptyAddAdjBtn');
+
+  if (emptyGoBankBtn) emptyGoBankBtn.addEventListener('click', () => switchView('bank-statements'));
+  if (emptyGoInvoicesBtn) emptyGoInvoicesBtn.addEventListener('click', () => switchView('invoices'));
+  if (emptyGoInvoicesFromRecBtn) emptyGoInvoicesFromRecBtn.addEventListener('click', () => switchView('invoices'));
+  if (emptyGoBillsBtn) {
+    emptyGoBillsBtn.addEventListener('click', () => {
+      if (billsCatalogModal) billsCatalogModal.style.display = 'flex';
+      renderVendorBillsCatalogModal();
+    });
+  }
+  if (emptyAddAdjBtn) emptyAddAdjBtn.addEventListener('click', openAddAdjustmentModal);
+
+  // 10. Browser History Navigation
+  window.addEventListener('popstate', () => {
+    parseInitialRoute(false);
+  });
+}
+
+function parseInitialRoute(updateHistory = false) {
+  const path = (window.location.pathname || '').toLowerCase();
+  const hash = (window.location.hash || '').toLowerCase();
+  const search = (window.location.search || '').toLowerCase();
+
+  if (path.includes('virtual-ledger') || hash.includes('virtual-ledger') || search.includes('virtual-ledger') || path.includes('ledger') || hash.includes('ledger')) {
+    switchView('virtual-ledger', updateHistory);
+  } else if (path.includes('invoices') || hash.includes('invoices') || search.includes('invoices')) {
+    switchView('invoices', updateHistory);
+  } else if (path.includes('dashboard') || hash.includes('dashboard') || search.includes('dashboard')) {
+    switchView('dashboard', updateHistory);
+  } else {
+    switchView('bank-statements', updateHistory);
+  }
+}
 
 // Setup Authentication Listeners & Session Handling (Pure Enterprise Sign In)
 function setupSupabaseAuthListeners() {
@@ -5129,5 +8929,36 @@ window.updateAuthUI = updateAuthUI;
 window.getSupabaseClient = getSupabaseClient;
 window.loadFromSupabase = loadFromSupabase;
 window.persistToSupabase = persistToSupabase;
+window.renderVirtualLedgerView = renderVirtualLedgerView;
+window.getVirtualLedgerData = getVirtualLedgerData;
+window.getVirtualReceivablesData = getVirtualReceivablesData;
+window.getVirtualPayablesData = getVirtualPayablesData;
+window.openLedgerDetailDrawer = openLedgerDetailDrawer;
+window.closeLedgerDetailDrawer = closeLedgerDetailDrawer;
+window.openAddAdjustmentModal = openAddAdjustmentModal;
+window.closeAddAdjustmentModal = closeAddAdjustmentModal;
+window.exportVirtualLedger = exportVirtualLedger;
+window.parseInitialRoute = parseInitialRoute;
+window.clearAllInvoices = clearAllInvoices;
+window.exportInvoicesToExcel = exportInvoicesToExcel;
+window.exportInvoicesToCsv = exportInvoicesToCsv;
+window.getPharmaAgeingData = getPharmaAgeingData;
+window.renderVirtualAgeingTable = renderVirtualAgeingTable;
+window.getPartyLedgerStatement = getPartyLedgerStatement;
+window.renderVirtualPartyLedgerView = renderVirtualPartyLedgerView;
+window.openPartyLedger = openPartyLedger;
+window.exportPartyLedgerToExcel = exportPartyLedgerToExcel;
+window.getVendorBillReconciliationData = getVendorBillReconciliationData;
+window.validateStatementMatchesSavedBank = validateStatementMatchesSavedBank;
+window.showStatementRejectionPopup = showStatementRejectionPopup;
+window.closeStatementRejectionPopup = closeStatementRejectionPopup;
+window.getActiveBank = getActiveBank;
+window.setSelectedBankId = (id) => { selectedBankId = id; };
+window.getSelectedBankId = () => selectedBankId;
+window.getCorporateBanks = () => corporateBanks;
+window.detectBankFromCsv = detectBankFromCsv;
+
+
+
 
 

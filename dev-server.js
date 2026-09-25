@@ -179,8 +179,8 @@ async function handler(req, res) {
           const parsed = JSON.parse(body || '{}');
           const hasBanks = Array.isArray(parsed.banks) && parsed.banks.length > 0;
           const hasTxns = Array.isArray(parsed.transactions) && parsed.transactions.length > 0;
-          const hasDeletes = Array.isArray(parsed.deletedSheets) && parsed.deletedSheets.length > 0;
-          if (!hasBanks && !hasTxns && !hasDeletes) {
+          const hasAdjustments = Array.isArray(parsed.adjustments) && parsed.adjustments.length > 0;
+          if (!hasBanks && !hasTxns && !hasDeletes && !hasAdjustments) {
             res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ success: false, error: 'Save payload is empty. No banks or transactions were received.' }));
             return;
@@ -315,11 +315,30 @@ async function handler(req, res) {
   }
 }
 
+function getNetworkIp() {
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
 const server = http.createServer(handler);
 
-server.listen(PORT, () => {
-  console.log(`IFIMED Reconciliation Server running at http://localhost:${PORT}/`);
-  console.log('Supabase Cloud Database connected');
+server.listen(PORT, '0.0.0.0', () => {
+  const networkIp = getNetworkIp();
+  console.log(`\n  IFIMED Reconciliation Workspace is live:`);
+  console.log(`  > Local:   http://localhost:${PORT}/`);
+  console.log(`  > Network: http://${networkIp}:${PORT}/  <-- Share this with anyone on your Wi-Fi`);
+  console.log(`  > Ledger:  http://${networkIp}:${PORT}/virtual-ledger`);
+  console.log(`  > Invoices: http://${networkIp}:${PORT}/invoices\n`);
+  console.log('Supabase Cloud Database connected\n');
 });
 
 module.exports = server;
+

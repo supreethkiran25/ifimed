@@ -40,9 +40,10 @@ var REAL_CORPORATE_BANKS = [
 ];
 
 var REAL_ACTIVITIES = [];
+var REAL_ADJUSTMENTS = [];
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { REAL_INVOICES, REAL_VENDOR_BILLS, REAL_CORPORATE_BANKS, REAL_ACTIVITIES };
+  module.exports = { REAL_INVOICES, REAL_VENDOR_BILLS, REAL_CORPORATE_BANKS, REAL_ACTIVITIES, REAL_ADJUSTMENTS };
 }
 
 if (typeof window !== 'undefined') {
@@ -50,4 +51,5 @@ if (typeof window !== 'undefined') {
   window.REAL_VENDOR_BILLS = REAL_VENDOR_BILLS;
   window.REAL_CORPORATE_BANKS = REAL_CORPORATE_BANKS;
   window.REAL_ACTIVITIES = REAL_ACTIVITIES;
+  window.REAL_ADJUSTMENTS = REAL_ADJUSTMENTS;
 }

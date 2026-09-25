@@ -10,8 +10,8 @@ module.exports = async (req, res) => {
     const parsed = await readJsonBody(req);
     const hasBanks = Array.isArray(parsed.banks) && parsed.banks.length > 0;
     const hasTxns = Array.isArray(parsed.transactions) && parsed.transactions.length > 0;
-    const hasDeletes = Array.isArray(parsed.deletedSheets) && parsed.deletedSheets.length > 0;
-    if (!hasBanks && !hasTxns && !hasDeletes) {
+    const hasAdjustments = Array.isArray(parsed.adjustments) && parsed.adjustments.length > 0;
+    if (!hasBanks && !hasTxns && !hasDeletes && !hasAdjustments) {
       sendJson(res, 400, { success: false, error: 'Save payload is empty. No banks or transactions were received.' });
       return;
     }
