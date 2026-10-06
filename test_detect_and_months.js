@@ -11,8 +11,8 @@ function sliceBetween(startText, endText) {
 }
 
 eval(sliceBetween('function digitsOnly', 'function showToast'));
-eval(sliceBetween('function detectCsvDelimiter', 'function isDateLikeValue'));
-eval(sliceBetween('const MONTH_ABBR_INDEX', 'function amountLooksLikeDateDigits'));
+eval(sliceBetween('function detectCsvDelimiter', 'const MONTH_NAMES_LONG'));
+eval(sliceBetween('const MONTH_NAMES_LONG', 'function amountLooksLikeDateDigits'));
 
 assert.strictEqual(parseDateToMonthId('05/07/2026'), '2026-07');
 assert.strictEqual(parseDateToMonthId('15/08/2026 00:00:00'), '2026-08');
@@ -84,4 +84,14 @@ if (fs.existsSync(kariyaPath)) {
   console.log('✔ kariya statement.xls is ICICI A/c 111401540946, not Axis');
 }
 
+const sliceCsv = fs.readFileSync('./sample_statements/slice_statement_01Oct28_06.csv', 'utf8');
+const sliceDetected = detectBankFromCsv(sliceCsv, 'slice_statement_01Oct28_06.csv');
+assert.strictEqual(sliceDetected.extracted.fullAccNo, '9686658055');
+assert.strictEqual(sliceDetected.extracted.ifsc, 'NESF0000333');
+assert.ok(sliceDetected.bank.name.includes('North East Small Finance Bank') || sliceDetected.bank.name.includes('Slice'));
+assert.strictEqual(sliceDetected.bank.accNo, '••••8055');
+assert.strictEqual(sliceDetected.isNew, true);
+console.log('✔ slice_statement_01Oct28_06.csv auto-detected and registered (NESF / Slice ••••8055)');
+
 console.log('\nAll bank + month detection checks passed.');
+

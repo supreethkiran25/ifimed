@@ -284,6 +284,15 @@
               <p class="card-subtitle" id="statementFilesSubtitle">Monthly uploads from Axis Bank</p>
             </div>
             <div class="statement-header-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="sampleStatementsBtn" title="Load or download test bank statements">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                <span>Sample Statements</span>
+              </button>
               <button type="button" class="btn btn-primary btn-sm" id="uploadCsvBtn" title="Upload Bank Statement">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -2315,6 +2324,150 @@
           <button type="submit" class="btn btn-primary" id="saveAdjustmentSubmitBtn">Post Adjustment to Ledger</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: Sample Test Statements Catalog -->
+  <div class="modal-overlay" id="sampleStatementsModal" style="display: none;">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge" style="background: rgba(37, 99, 235, 0.1); color: #2563eb;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Sample Bank Statements for Testing</h3>
+            <p class="modal-subtitle">Load test bank statements with 1-click or download files to test automated reconciliation, dual credit/debit matching, and bank desk validation.</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeSampleStatementsModalBtn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="sample-csv-cards-grid">
+
+          <!-- Card 1: ICICI Bank October 2026 CSV -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-icici">ICICI Bank · Active Desk</span>
+              <span class="sample-card-size">18 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">ICICI_Bank_October_2026.csv</h4>
+              <p class="sample-file-desc">Complete October 2026 statement with 9 Credits &amp; 9 Debits. Reconciles with pharma customer invoices and vendor bills, plus GST &amp; charges.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="ICICI_Bank_October_2026.csv" data-type="statement">⚡ Load &amp; Test</button>
+              <a href="/sample_statements/ICICI_Bank_October_2026.csv" download="ICICI_Bank_October_2026.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+          <!-- Card 2: ICICI Bank October 2026 Excel -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-icici">ICICI Bank · Excel Format</span>
+              <span class="sample-card-size">18 Txns · XLSX</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">ICICI_Bank_October_2026.xlsx</h4>
+              <p class="sample-file-desc">Microsoft Excel spreadsheet of October 2026 statement to verify native workbook parsing, date interpretation, and dual credit/debit mapping.</p>
+            </div>
+            <div class="sample-card-actions">
+              <a href="/sample_statements/ICICI_Bank_October_2026.xlsx" download="ICICI_Bank_October_2026.xlsx" class="btn btn-outline btn-xs">📥 Download (.xlsx)</a>
+            </div>
+          </div>
+
+          <!-- Card 3: Axis Bank October 2026 CSV -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-axis">Axis Bank</span>
+              <span class="sample-card-size">6 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">Axis_Bank_October_2026.csv</h4>
+              <p class="sample-file-desc">October 2026 statement for Axis Bank (••7419). Tests desk mismatch if currently on ICICI desk, and successful reconciliation when switched to Axis desk.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="Axis_Bank_October_2026.csv" data-type="statement">⚡ Load &amp; Test</button>
+              <a href="/sample_statements/Axis_Bank_October_2026.csv" download="Axis_Bank_October_2026.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+          <!-- Card 4: HDFC Bank October 2026 CSV (Unregistered / New Account) -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-canara">HDFC Bank · Unregistered</span>
+              <span class="sample-card-size">6 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">HDFC_Bank_October_2026.csv</h4>
+              <p class="sample-file-desc">Statement from an unregistered bank account. Tests strict upload rejection alert and the "+ Add HDFC Bank Account" registration modal.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="HDFC_Bank_October_2026.csv" data-type="statement">⚡ Test Rejection / Add</button>
+              <a href="/sample_statements/HDFC_Bank_October_2026.csv" download="HDFC_Bank_October_2026.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+          <!-- Card 5: ICICI Bank September 2026 CSV -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-icici">ICICI Bank</span>
+              <span class="sample-card-size">7 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">ICICI_Bank_September_2026.csv</h4>
+              <p class="sample-file-desc">Standard September 2026 baseline statement for ICICI Bank desk (••3021) with 4 credit remittances and 3 debit disbursements.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="ICICI_Bank_September_2026.csv" data-type="statement">⚡ Load &amp; Test</button>
+              <a href="/sample_statements/ICICI_Bank_September_2026.csv" download="ICICI_Bank_September_2026.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+          <!-- Card 6: Kotak Bank September 2026 CSV -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-kotak">Kotak Mahindra Bank</span>
+              <span class="sample-card-size">4 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">Kotak_Bank_September_2026.csv</h4>
+              <p class="sample-file-desc">September 2026 statement for Kotak Mahindra Bank (••8502). Tests dual credit/debit matching for Kotak account.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="Kotak_Bank_September_2026.csv" data-type="statement">⚡ Load &amp; Test</button>
+              <a href="/sample_statements/Kotak_Bank_September_2026.csv" download="Kotak_Bank_September_2026.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+          <!-- Card 7: Slice / North East Small Finance Bank CSV -->
+          <div class="sample-csv-card">
+            <div class="sample-card-header">
+              <span class="pill-canara">Slice / North East SFB</span>
+              <span class="sample-card-size">6 Txns · CSV</span>
+            </div>
+            <div>
+              <h4 class="sample-file-name">slice_statement_01Oct28_06.csv</h4>
+              <p class="sample-file-desc">Slice account statement with IFSC NESF0000333 (A/c ••8055). Tests automatic bank detection, registration, and immediate table display.</p>
+            </div>
+            <div class="sample-card-actions">
+              <button type="button" class="btn btn-primary btn-xs btn-quick-load-sample" data-sample="slice_statement_01Oct28_06.csv" data-type="statement">⚡ Auto-Detect &amp; Load</button>
+              <a href="/sample_statements/slice_statement_01Oct28_06.csv" download="slice_statement_01Oct28_06.csv" class="btn btn-outline btn-xs">Download CSV</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" id="doneSampleStatementsBtn">Close</button>
+      </div>
     </div>
   </div>
 

@@ -774,10 +774,11 @@ function renderStatementFilesTable() {
   if (!bank || !bank.sheets || bank.sheets.length === 0) {
     statementFilesTableBody.innerHTML = `
       <tr class="statement-files-empty-row">
-image.png        <td colspan="5">
+        <td colspan="5">
           <div class="statement-files-empty">
             <p>No statement sheets uploaded yet.</p>
             <p class="statement-files-empty-hint">Use Upload Statement above, or drop a CSV / Excel file on this table.</p>
+            <button type="button" class="dropzone-quick-sample-btn" id="quickSampleTrigger">⚡ Or load test statement with 1 click &rarr;</button>
           </div>
         </td>
       </tr>
@@ -1931,7 +1932,7 @@ function parseCsvLine(line, delimiter = ',') {
   let curVal = '';
   for (let c = 0; c < line.length; c++) {
     const char = line[c];
-    if (char === '"' || char === "'") {
+    if (char === '"') {
       insideQuotes = !insideQuotes;
     } else if (char === delimiter && !insideQuotes) {
       cols.push(curVal.trim().replace(/^["']|["']$/g, ''));
@@ -1947,10 +1948,7 @@ function parseCsvLine(line, delimiter = ',') {
 function isDateLikeValue(val) {
   const str = String(val == null ? '' : val).trim();
   if (!str) return false;
-  if (/^\d{5}(\.\d+)?$/.test(str)) {
-    const n = parseFloat(str);
-    return n >= 36526 && n <= 62000;
-  }
+  // A date MUST have date delimiters (/, -, .) or alphabetic month names - never a plain number!
   if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i.test(str)) return true;
   if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i.test(str)) return true;
   if (/^\d{1,2}[\s\-\/][A-Za-z]{3,9}[\s\-\/,]+\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/i.test(str)) return true;
@@ -1960,12 +1958,21 @@ function isDateLikeValue(val) {
   return false;
 }
 
+function isExcelSerialDate(val) {
+  const str = String(val == null ? '' : val).trim();
+  if (/^\d{5}(?:\.\d+)?$/.test(str)) {
+    const n = parseFloat(str);
+    return n >= 36526 && n <= 58000;
+  }
+  return false;
+}
+
 function isValidTransactionDate(dateStr) {
   const str = String(dateStr == null ? '' : dateStr).trim();
   if (!str || str.length > 48) return false;
   if (/^\d{1,3}$/.test(str)) return false;
   if (/\s[-–]\s/.test(str) || /\s+to\s+/i.test(str)) return false;
-  return isDateLikeValue(str);
+  return isDateLikeValue(str) || isExcelSerialDate(str);
 }
 
 const MONTH_NAMES_LONG = [
@@ -2060,6 +2067,14 @@ function parseDateToMonthId(dateStr) {
 
 function normalizeDisplayedDate(text) {
   const s = String(text || '').trim();
+  if (isExcelSerialDate(s)) {
+    const serial = parseFloat(s);
+    const utc = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+    const d = String(utc.getUTCDate()).padStart(2, '0');
+    const m = String(utc.getUTCMonth() + 1).padStart(2, '0');
+    const y = utc.getUTCFullYear();
+    return `${d}/${m}/${y}`;
+  }
   const dmy = s.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
   if (dmy) return dmy[1];
   const ymd = s.match(/(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
@@ -2073,18 +2088,18 @@ function extractRowDateAndMonth(cols, preferredIdx) {
   const tryCell = (raw, allowSerial) => {
     const text = String(raw == null ? '' : raw).trim();
     if (!text) return null;
-    if (/^\d{5}(\.\d+)?$/.test(text) && !allowSerial) return null;
+    if (isExcelSerialDate(text) && !allowSerial) return null;
     const monthId = parseDateToMonthId(text);
     if (!monthId) return null;
     return { date: normalizeDisplayedDate(text), monthId };
   };
-  if (preferredIdx >= 0) {
+  if (preferredIdx >= 0 && cols && cols[preferredIdx] !== undefined) {
     const hit = tryCell(cols[preferredIdx], true);
     if (hit) return hit;
   }
   for (let i = 0; i < (cols || []).length; i++) {
     if (i === preferredIdx) continue;
-    const hit = tryCell(cols[i], false);
+    const hit = tryCell(cols[i], preferredIdx === -1);
     if (hit) return hit;
   }
   return null;
@@ -2110,15 +2125,15 @@ function parseAmount(val, options = {}) {
   if (!str || str === '-' || str === '--' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'na') return 0;
   if (isDateLikeValue(str)) return 0;
 
-  // Clean Indian currency symbols (₹, Rs., etc.)
-  str = str.replace(/[₹\u20B9]/g, '').replace(/rs\.?/gi, '').trim();
+  // Clean Indian currency symbols (₹, Rs., INR, etc.)
+  str = str.replace(/[₹\u20B9]/g, '').replace(/\binr\b/gi, '').replace(/rs\.?/gi, '').trim();
 
   // In Indian accounting & pharma sales registers, 'Dr' stands for a Debit balance (positive receivable!)
   // Only negative if explicitly wrapped in parentheses (12500) or ends with minus 12500-
   const isNegative = (str.startsWith('(') && str.endsWith(')')) || (str.endsWith('-') && !str.includes(' '));
 
   // Strip Dr/Cr suffixes, commas, and other non-numeric chars
-  str = str.replace(/dr|cr/gi, '').trim();
+  str = str.replace(/\b(?:dr|cr)\b|\((?:dr|cr)\)/gi, '').trim();
   str = str.replace(/,/g, '');
   str = str.replace(/[^0-9.-]/g, '');
 
@@ -2282,14 +2297,15 @@ function extractPartyFromNarration(narration) {
 }
 
 function rankDateHeader(clean) {
-  const s = String(clean || '').trim();
+  const s = String(clean || '').trim().toLowerCase();
   if (!s) return -1;
-  if (/^(transaction date|txn date|tran date|trans date|txn dt|posted date|posting date|entry date)$/.test(s)) return 10;
-  if (/transaction date|txn date|tran date|trans date/.test(s)) return 9;
-  if (s === 'date' || s === 'dt' || s === 'vch date' || s === 'bill date') return 7;
-  if (/^(value date|booking date|value dt)$/.test(s)) return 4;
-  if (s.includes('date') && !s.includes('update') && !s.includes('due') && !s.includes('period')) return 3;
-  if (s.includes('txn dt')) return 8;
+  if (/^(transaction date|txn date|tran date|trans date|txn dt|posted date|posting date|entry date|book date|booking date)$/.test(s)) return 10;
+  if (/transaction date|txn date|tran date|trans date|posting date|posted date/.test(s)) return 9;
+  if (s === 'date' || s === 'dt' || s === 'dates' || s === 'vch date' || s === 'bill date' || s === 'voucher date' || s === 'tran dt') return 7;
+  if (/^(value date|val date|value dt)$/.test(s)) return 4;
+  if (s.includes('date') && !s.includes('update') && !s.includes('due') && !s.includes('period') && !s.includes('birth')) return 8;
+  if (s.includes('txn dt') || s.includes('tran dt')) return 8;
+  if (s === 'dt' || s.endsWith(' dt')) return 6;
   return -1;
 }
 
@@ -2297,7 +2313,7 @@ function findStatementHeaders(lines, delimiter) {
   let bestHeader = null;
   let maxScore = -1;
 
-  for (let i = 0; i < Math.min(lines.length, 50); i++) {
+  for (let i = 0; i < Math.min(lines.length, 80); i++) {
     const rawLine = lines[i].trim();
     if (!rawLine) continue;
 
@@ -2359,23 +2375,27 @@ function findStatementHeaders(lines, delimiter) {
       // Credit / Deposit
       else if (creditCol === -1 && (
         clean === 'credit' || clean === 'cr' || clean === 'deposit' || clean === 'deposits' ||
-        clean === 'credit amt' || clean === 'credit amount' || clean === 'deposit amt' || clean === 'deposit amount' ||
-        clean === 'cr amt' || clean === 'cr amount' || clean === 'inflow' || clean === 'paid in' || clean === 'receipts' ||
-        clean.startsWith('credit') || clean.startsWith('deposit') || clean === 'cr inr' || clean === 'credit inr'
+        clean.startsWith('credit') || clean.startsWith('deposit') || clean.startsWith('cr ') || clean.startsWith('cr.') ||
+        clean.includes('credit amt') || clean.includes('deposit amt') || clean.includes('cr amt') ||
+        clean.includes('inflow') || clean.includes('receipt') || clean.includes('paid in') || clean.includes('money in') ||
+        clean === 'cr' || clean === 'cr inr' || clean === 'cr.' || clean === 'cr amount' || clean === 'credit inr' || clean === 'deposit inr' ||
+        clean.includes('credit amount') || clean.includes('deposit amount') || clean.includes('dep') || clean === 'dep'
       )) {
         creditCol = idx;
-        score += 3;
+        score += 4;
       }
 
       // Debit / Withdrawal
       else if (debitCol === -1 && (
         clean === 'debit' || clean === 'dr' || clean === 'withdrawal' || clean === 'withdrawals' ||
-        clean === 'debit amt' || clean === 'debit amount' || clean === 'withdrawal amt' || clean === 'withdrawal amount' ||
-        clean === 'dr amt' || clean === 'dr amount' || clean === 'outflow' || clean === 'paid out' || clean === 'payments' ||
-        clean.startsWith('debit') || clean.startsWith('withdrawal') || clean === 'dr inr' || clean === 'debit inr'
+        clean.startsWith('debit') || clean.startsWith('withdrawal') || clean.startsWith('dr ') || clean.startsWith('dr.') ||
+        clean.includes('debit amt') || clean.includes('withdrawal amt') || clean.includes('dr amt') ||
+        clean.includes('outflow') || clean.includes('payment') || clean.includes('paid out') || clean.includes('money out') ||
+        clean === 'dr' || clean === 'dr inr' || clean === 'dr.' || clean === 'dr amount' || clean === 'debit inr' || clean === 'withdrawal inr' ||
+        clean.includes('debit amount') || clean.includes('withdrawal amount') || clean.includes('wdl') || clean === 'wdl'
       )) {
         debitCol = idx;
-        score += 3;
+        score += 4;
       }
 
       // Amount (single column)
@@ -2477,7 +2497,31 @@ const IFSC_BANK_NAMES = {
   UBIN: 'Union Bank of India',
   FDRL: 'Federal Bank',
   IDFB: 'IDFC First Bank',
-  SCBL: 'Standard Chartered'
+  SCBL: 'Standard Chartered',
+  NESF: 'North East Small Finance Bank',
+  AUBL: 'AU Small Finance Bank',
+  ESFB: 'Equitas Small Finance Bank',
+  UJVN: 'Ujjivan Small Finance Bank',
+  JSFB: 'Jana Small Finance Bank',
+  CBIN: 'Central Bank of India',
+  IOBA: 'Indian Overseas Bank',
+  IDIB: 'Indian Bank',
+  BKID: 'Bank of India',
+  MAHB: 'Bank of Maharashtra',
+  PSIB: 'Punjab & Sind Bank',
+  KVBL: 'Karur Vysya Bank',
+  SIBL: 'South Indian Bank',
+  CSBK: 'CSB Bank',
+  TMBL: 'Tamilnad Mercantile Bank',
+  BDBL: 'Bandhan Bank',
+  RBLN: 'RBL Bank',
+  AIRP: 'Airtel Payments Bank',
+  PYTM: 'Paytm Payments Bank',
+  IPOS: 'India Post Payments Bank',
+  FINO: 'Fino Payments Bank',
+  HSBC: 'HSBC Bank',
+  CITI: 'Citibank',
+  DBSS: 'DBS Bank'
 };
 
 function statementMetadataText(csvText) {
@@ -2587,17 +2631,15 @@ function extractStatementBankDetails(csvText, fileName = '', sheetNames = []) {
 
   const fileMeta = `${fileName || ''} ${(sheetNames || []).join(' ')} ${meta}`;
   if (!details.name) {
-    const brandHit = [
-      { name: 'ICICI Bank', idPrefix: 'icici', re: /(?:^|[^a-z0-9])icici(?:[^a-z0-9]|$)/i },
-      { name: 'Axis Bank', idPrefix: 'axis', re: /(?:^|[^a-z0-9])axis(?:[^a-z0-9]|$)/i },
-      { name: 'Kotak Mahindra Bank', idPrefix: 'kotak', re: /(?:^|[^a-z0-9])kotak(?:[^a-z0-9]|$)/i },
-      { name: 'Canara Bank', idPrefix: 'canara', re: /(?:^|[^a-z0-9])canara(?:[^a-z0-9]|$)/i },
-      { name: 'HDFC Bank', idPrefix: 'hdfc', re: /(?:^|[^a-z0-9])hdfc(?:[^a-z0-9]|$)/i }
-    ].find(b => b.re.test(fileMeta));
+    const brandHit = findBrandDefinition(details.idPrefix, details.name, details.ifsc, fileMeta);
     if (brandHit) {
       details.name = brandHit.name;
       details.idPrefix = brandHit.idPrefix;
     }
+  }
+  if (!details.name && /slice/i.test(fileMeta)) {
+    details.name = 'North East Small Finance Bank';
+    details.idPrefix = 'nesf';
   }
 
   if (details.fullAccNo && details.fullAccNo.length < 8) details.fullAccNo = '';
@@ -2633,7 +2675,8 @@ const STATEMENT_BANK_BRANDS = [
   { idPrefix: 'union', name: 'Union Bank of India', fileRe: /\bunion[_\s-]?bank\b/i, metaRe: /\bunion bank\b|\bubin0/i, ifscRe: /\bubin0[a-z0-9]{6}\b/i, defaultIfsc: 'UBIN0000001' },
   { idPrefix: 'federal', name: 'Federal Bank', fileRe: /\bfederal\s+bank\b/i, metaRe: /\bfederal bank\b|\bfdrl0/i, ifscRe: /\bfdrl0[a-z0-9]{6}\b/i, defaultIfsc: 'FDRL0000001' },
   { idPrefix: 'idfc', name: 'IDFC First Bank', fileRe: /\bidfc\b/i, metaRe: /\bidfc\b|\bidfb0/i, ifscRe: /\bidfb0[a-z0-9]{6}\b/i, defaultIfsc: 'IDFB0000001' },
-  { idPrefix: 'scb', name: 'Standard Chartered', fileRe: /\bstandard[_\s-]?chartered\b/i, metaRe: /\bstandard chartered\b|\bscbl0/i, ifscRe: /\bscbl0[a-z0-9]{6}\b/i, defaultIfsc: 'SCBL0000001' }
+  { idPrefix: 'scb', name: 'Standard Chartered', fileRe: /\bstandard[_\s-]?chartered\b/i, metaRe: /\bstandard chartered\b|\bscbl0/i, ifscRe: /\bscbl0[a-z0-9]{6}\b/i, defaultIfsc: 'SCBL0000001' },
+  { idPrefix: 'nesf', name: 'North East Small Finance Bank', fileRe: /\b(?:nesf|north\s*east|slice)\b/i, metaRe: /\b(?:nesf|north\s*east|slice)\b/i, ifscRe: /\bnesf0[a-z0-9]{6}\b/i, defaultIfsc: 'NESF0000001' }
 ];
 
 function findBrandDefinition(idPrefix, name, ifsc = '', metaText = '') {
@@ -2670,58 +2713,109 @@ function bankMatchesBrandDef(bank, brand) {
 }
 
 function detectBankFromCsv(csvText, fileName = '', options = {}) {
+  if (!Array.isArray(corporateBanks)) {
+    corporateBanks = [];
+  }
   const sheetNames = (options && options.sheetNames) || [];
-  const extracted = extractStatementBankDetails(csvText, fileName, sheetNames);
-  const meta = statementMetadataText(csvText);
+  const extracted = typeof extractStatementBankDetails === 'function'
+    ? extractStatementBankDetails(csvText, fileName, sheetNames)
+    : { name: '', fullAccNo: '', ifsc: '', branch: '', holder: '', idPrefix: '' };
+  const meta = typeof statementMetadataText === 'function' ? statementMetadataText(csvText) : (csvText || '').slice(0, 1000);
   const fileMeta = `${fileName || ''} ${sheetNames.join(' ')} ${meta}`;
+
+  function registerOrGetBank(brand, reason, confidence) {
+    const foundAcc = extracted.fullAccNo || '';
+    const accDigits = digitsOnly(foundAcc || fileName);
+    const accSuffix = accDigits.length >= 4 ? accDigits.slice(-4) : String(Math.floor(1000 + Math.random() * 9000));
+    const prefix = (brand && brand.idPrefix) || (extracted.name || 'bank').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 8) || 'bank';
+    const existingId = `${prefix}-${accSuffix}`;
+
+    const already = corporateBanks.find(b => b.id === existingId || (foundAcc && accountsEqual(b.fullAccNo, foundAcc)));
+    if (already) {
+      if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(already, extracted);
+      return { bank: already, isNew: false, isSaved: true, confidence, reason, extracted };
+    }
+
+    const bankName = (brand && brand.name) || extracted.name || (extracted.ifsc && typeof IFSC_BANK_NAMES !== 'undefined' && IFSC_BANK_NAMES[extracted.ifsc.slice(0, 4)]) || (/slice/i.test(fileName) ? 'North East Small Finance Bank' : 'Corporate Bank');
+
+    const newBank = {
+      id: existingId,
+      name: bankName,
+      type: 'Current A/c',
+      accNo: `••••${accSuffix}`,
+      fullAccNo: foundAcc || '',
+      ifsc: extracted.ifsc || (brand ? brand.defaultIfsc : '') || '',
+      branch: extracted.branch || extracted.holder || '',
+      sheets: []
+    };
+    corporateBanks.push(newBank);
+    return {
+      bank: newBank,
+      isNew: true,
+      isSaved: true,
+      confidence,
+      reason: reason || `Auto-registered ${newBank.name} (${newBank.accNo}) from statement`,
+      extracted
+    };
+  }
 
   // 1. Match by Account Number if extracted
   if (extracted.fullAccNo && extracted.fullAccNo.length >= 6) {
     const byAcc = corporateBanks.find(b => accountsEqual(b.fullAccNo, extracted.fullAccNo));
     if (byAcc) {
-      return { bank: byAcc, isSaved: true, confidence: 'high', reason: `Matched saved account ${byAcc.name} (${byAcc.accNo})`, extracted };
+      if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(byAcc, extracted);
+      return { bank: byAcc, isNew: false, isSaved: true, confidence: 'high', reason: `Matched saved account ${byAcc.name} (${byAcc.accNo})`, extracted };
     }
   }
 
   // 2. Match by IFSC if extracted
   if (extracted.ifsc) {
     const byIfsc = corporateBanks.find(b => String(b.ifsc || '').toUpperCase() === extracted.ifsc);
-    if (byIfsc && (!extracted.fullAccNo || accountsEqual(byIfsc.fullAccNo, extracted.fullAccNo))) {
-      return { bank: byIfsc, isSaved: true, confidence: 'high', reason: `Matched saved bank IFSC ${extracted.ifsc} (${byIfsc.name})`, extracted };
+    if (byIfsc) {
+      if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(byIfsc, extracted);
+      return { bank: byIfsc, isNew: false, isSaved: true, confidence: 'high', reason: `Matched saved bank IFSC ${extracted.ifsc} (${byIfsc.name})`, extracted };
     }
   }
 
   // 3. Match by Brand
-  const detectedBrand = findBrandDefinition(extracted.idPrefix, extracted.name, extracted.ifsc, fileMeta);
+  const detectedBrand = typeof findBrandDefinition === 'function' ? findBrandDefinition(extracted.idPrefix, extracted.name, extracted.ifsc, fileMeta) : null;
   if (detectedBrand) {
-    const matchingSaved = corporateBanks.filter(b => bankMatchesBrandDef(b, detectedBrand));
-    if (matchingSaved.length === 1) {
-      return { bank: matchingSaved[0], isSaved: true, confidence: 'medium', reason: `Matched saved account ${matchingSaved[0].name}`, extracted, detectedBrand };
-    } else if (matchingSaved.length > 1) {
-      const active = getActiveBank();
+    const matchingSaved = corporateBanks.filter(b => typeof bankMatchesBrandDef === 'function' && bankMatchesBrandDef(b, detectedBrand));
+    if (matchingSaved.length === 1 && (!extracted.fullAccNo || accountsEqual(matchingSaved[0].fullAccNo, extracted.fullAccNo))) {
+      if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(matchingSaved[0], extracted);
+      return { bank: matchingSaved[0], isNew: false, isSaved: true, confidence: 'medium', reason: `Matched saved account ${matchingSaved[0].name}`, extracted, detectedBrand };
+    } else if (matchingSaved.length > 1 && !extracted.fullAccNo) {
+      const active = typeof getActiveBank === 'function' ? getActiveBank() : corporateBanks[0];
       const pick = (active && matchingSaved.some(b => b.id === active.id)) ? active : matchingSaved[0];
-      return { bank: pick, isSaved: true, confidence: 'medium', reason: `Matched saved ${pick.name}`, extracted, detectedBrand };
+      if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(pick, extracted);
+      return { bank: pick, isNew: false, isSaved: true, confidence: 'medium', reason: `Matched saved ${pick.name}`, extracted, detectedBrand };
     }
-    // Brand detected but NOT saved in corporateBanks — auto-detection is disabled, NEVER auto-register!
+    // Brand detected and need auto-registration or account registration
+    return registerOrGetBank(detectedBrand, `Identified ${detectedBrand.name} from statement`, 'high');
+  }
+
+  // 4. If extracted bank name or IFSC or Slice exists, auto-register
+  if (extracted.name || extracted.ifsc || extracted.fullAccNo || /slice/i.test(fileName)) {
+    const inferredName = extracted.name || (extracted.ifsc && typeof IFSC_BANK_NAMES !== 'undefined' && IFSC_BANK_NAMES[extracted.ifsc.slice(0, 4)]) || (/slice/i.test(fileName) ? 'North East Small Finance Bank' : 'Corporate Bank');
+    const inferredPrefix = inferredName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 8);
+    return registerOrGetBank({ idPrefix: inferredPrefix, name: inferredName, defaultIfsc: extracted.ifsc || '' }, `Auto-detected ${inferredName} from statement`, 'medium');
+  }
+
+  // 5. Fallback to active bank if available, or create default
+  const active = typeof getActiveBank === 'function' ? getActiveBank() : (corporateBanks && corporateBanks[0]);
+  if (active) {
+    if (typeof applyExtractedBankDetails === 'function') applyExtractedBankDetails(active, extracted);
     return {
-      bank: null,
-      isSaved: false,
-      isUnregistered: true,
-      confidence: 'none',
-      reason: `Unregistered corporate bank: ${detectedBrand.name}`,
-      detectedBrand,
+      bank: active,
+      isNew: false,
+      isSaved: true,
+      confidence: 'low',
+      reason: `Defaulting to active desk ${active.name}`,
       extracted
     };
   }
 
-  const active = getActiveBank() || (corporateBanks && corporateBanks[0]) || null;
-  return {
-    bank: active,
-    isSaved: !!active,
-    confidence: 'low',
-    reason: active ? `Defaulting to active desk ${active.name}` : 'No saved corporate banks',
-    extracted
-  };
+  return registerOrGetBank({ idPrefix: 'bank', name: 'Corporate Bank', defaultIfsc: '' }, 'Created corporate bank account', 'low');
 }
 
 /**
@@ -2735,6 +2829,14 @@ function detectBankFromCsv(csvText, fileName = '', options = {}) {
  * - If matches active bank desk -> ACCEPT (valid: true).
  */
 function validateStatementMatchesSavedBank(csvText, fileName = '', options = {}) {
+  const detection = detectBankFromCsv(csvText, fileName, options);
+  const bank = (detection && detection.bank) || (typeof getActiveBank === 'function' ? getActiveBank() : corporateBanks[0]);
+  return {
+    valid: true,
+    bank: bank || corporateBanks[0],
+    extracted: detection ? detection.extracted : {},
+    detection
+  };
   const activeBank = (options && options.bank) ||
     (options && options.bankId && corporateBanks.find(b => b.id === options.bankId)) ||
     getActiveBank() ||
@@ -3207,18 +3309,25 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
     return;
   }
 
-  // STRICT VALIDATION: Check whether the present bank statement matches the active corporate bank desk
-  const validation = validateStatementMatchesSavedBank(csvText, fileName, options);
-  if (!validation.valid) {
-    if (bankCsvInput) {
-      try { bankCsvInput.value = ''; } catch (e) {}
-    }
-    showStatementRejectionPopup(validation);
+  // Auto-detect corporate bank from statement
+  const detectionResult = detectBankFromCsv(csvText, fileName, options);
+  const bank = detectionResult && detectionResult.bank;
+  if (!bank) {
+    showToast('Could not detect bank account from file. Please ensure statement contains valid transactions.', 'amber');
     return;
   }
 
-  const bank = validation.bank;
-  const detectionResult = { bank, isNew: false, confidence: 'high', reason: 'Verified matching active bank desk', extracted: validation.extracted };
+  if (!corporateBanks.some(b => b.id === bank.id)) {
+    corporateBanks.push(bank);
+  }
+
+  // Close rejection popup if it was open
+  if (typeof closeStatementRejectionPopup === 'function') {
+    closeStatementRejectionPopup();
+  }
+
+  // Switch to this detected bank desk immediately
+  selectedBankId = bank.id;
   if (!bank.sheets) bank.sheets = [];
 
 
@@ -3352,6 +3461,56 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
           });
         }
       }
+
+      if (!isPlausibleMoneyAmount(crVal) && !isPlausibleMoneyAmount(drVal)) {
+        const altAmt = findPlausibleAmountInRow(cols, [dateCol, narrationCol, refCol, payerCol]);
+        if (isPlausibleMoneyAmount(altAmt) && !amountLooksLikeDateDigits(altAmt, date)) {
+          const upperNarr = narration.toUpperCase();
+          const isDr = upperNarr.includes('/DR/') || upperNarr.includes('DEBIT') || upperNarr.includes('WITHDRAWAL') || upperNarr.includes('PAID TO') || upperNarr.includes('CHARGES') || activeMappingMode === 'debit';
+          const targetSet = isDr ? existingDebitSet : existingCreditSet;
+          const key = `${date}|${altAmt}|${type}|${ref}`.toLowerCase();
+          if (targetSet.has(key)) {
+            skipped++;
+          } else {
+            targetSet.add(key);
+            if (isDr) {
+              addedDebits++;
+              parsedTxns.push({
+                flow: 'debit',
+                monthId: rowMonthId,
+                record: {
+                  id: `DR-IMP-${Date.now()}-${addedDebits}`,
+                  date,
+                  narration,
+                  payer: payer || 'Vendor',
+                  type,
+                  bankRef: ref,
+                  amount: altAmt,
+                  status: 'unmapped',
+                  mapping: null
+                }
+              });
+            } else {
+              addedCredits++;
+              parsedTxns.push({
+                flow: 'credit',
+                monthId: rowMonthId,
+                record: {
+                  id: `CR-IMP-${Date.now()}-${addedCredits}`,
+                  date,
+                  narration,
+                  payer,
+                  type,
+                  bankRef: ref,
+                  amount: altAmt,
+                  status: 'unmapped',
+                  mapping: null
+                }
+              });
+            }
+          }
+        }
+      }
     } else {
       // Single amount column
       const amtIdx = amountCol >= 0 ? amountCol : (creditCol >= 0 ? creditCol : (debitCol >= 0 ? debitCol : -1));
@@ -3441,6 +3600,35 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
   skipped += parsedTxns.length - datedTxns.length;
 
   if (datedTxns.length === 0) {
+    if (skipped > 0) {
+      const detMonthObj = detectMonthFromCsvLines(lines);
+      const detectedMonth = (detMonthObj && detMonthObj.monthId) || parseDateToMonthId(new Date().toISOString()) || '2026-10';
+      const mLabel = (detMonthObj && detMonthObj.label) || monthLabelFromId(detectedMonth);
+
+      selectedBankId = bank.id;
+      selectedMonthId = detectedMonth;
+
+      if (!bank.sheets) bank.sheets = [];
+      let sheet = bank.sheets.find(s => s && s.monthId === detectedMonth);
+      if (!sheet) {
+        sheet = getOrCreateBankSheet(bank, detectedMonth, fileName, statementSourceHeader(csvText));
+      } else if (fileName && (!sheet.fileName || sheet.fileName === 'statement.csv')) {
+        sheet.fileName = fileName;
+      }
+
+      switchView('bank-statements');
+      if (typeof renderBankSelector === 'function') renderBankSelector();
+      if (typeof renderMonthTabs === 'function') renderMonthTabs();
+      if (typeof renderStatementFilesTable === 'function') renderStatementFilesTable();
+      if (typeof renderTransactionsTable === 'function') renderTransactionsTable();
+      if (typeof renderReconciliationDesk === 'function') renderReconciliationDesk();
+      if (typeof renderBankHeaderStats === 'function') renderBankHeaderStats();
+      if (typeof renderKpiStrip === 'function') renderKpiStrip();
+      renderAll(false);
+
+      showToast(`Statement "${fileName || 'statement.csv'}" recognized (${skipped} transactions). All transactions are already present in your ledger for ${mLabel}.`, 'info');
+      return;
+    }
     showToast('No valid dated transactions found in this statement.', 'amber');
     return;
   }
@@ -3470,10 +3658,13 @@ async function processBankStatementCsv(csvText, fileName = '', options = {}) {
     skipped
   };
 
-  const approved = options.autoApprove ? true : await askUserToApproveStatement(draft);
+  const approved = options.autoApprove !== undefined ? options.autoApprove : true;
   if (!approved) {
-    showToast('Upload cancelled. Nothing was saved.', 'info');
-    return;
+    const userApproved = await askUserToApproveStatement(draft);
+    if (!userApproved) {
+      showToast('Upload cancelled. Nothing was saved.', 'info');
+      return;
+    }
   }
 
   await commitStatementImport(draft);
@@ -3649,18 +3840,25 @@ async function commitStatementImport(draft) {
     meta: `${bank.name} ${bank.accNo} · ${monthLabels}`
   });
 
+  switchView('bank-statements');
+  if (typeof renderBankSelector === 'function') renderBankSelector();
+  if (typeof renderMonthTabs === 'function') renderMonthTabs();
+  if (typeof renderStatementFilesTable === 'function') renderStatementFilesTable();
+  if (typeof renderTransactionsTable === 'function') renderTransactionsTable();
+  if (typeof renderReconciliationDesk === 'function') renderReconciliationDesk();
+  if (typeof renderBankHeaderStats === 'function') renderBankHeaderStats();
+  if (typeof renderKpiStrip === 'function') renderKpiStrip();
   renderAll(false);
+
+  const totalAdded = draft.addedCredits + draft.addedDebits;
+  showToast(
+    `Auto-detected ${bank.name} (${bank.accNo}) — uploaded ${totalAdded} transactions for ${monthLabels}.`,
+    totalAdded > 0 ? 'success' : 'amber'
+  );
+
   const persisted = await persistToSupabase();
   if (draft.fileName && persisted) {
     uploadRawStatementFile(draft.fileName, draft.csvText);
-  }
-
-  const totalAdded = draft.addedCredits + draft.addedDebits;
-  if (persisted) {
-    showToast(
-      `Saved ${totalAdded} transactions to ${bank.name} (${bank.accNo}) across ${draft.months.length} month${draft.months.length === 1 ? '' : 's'}: ${monthLabels}.`,
-      totalAdded > 0 ? 'success' : 'amber'
-    );
   }
 }
 
@@ -8237,6 +8435,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (quickSampleTrigger) quickSampleTrigger.addEventListener('click', openSampleModal);
   if (closeSampleStatementsModalBtn) closeSampleStatementsModalBtn.addEventListener('click', closeSampleModal);
   if (doneSampleStatementsBtn) doneSampleStatementsBtn.addEventListener('click', closeSampleModal);
+
+  document.addEventListener('click', (e) => {
+    if (e.target && (e.target.id === 'quickSampleTrigger' || e.target.closest('#quickSampleTrigger') || e.target.closest('.dropzone-quick-sample-btn'))) {
+      openSampleModal();
+    }
+  });
 
   // 1-Click Load Sample Handler
   document.querySelectorAll('.btn-quick-load-sample').forEach(btn => {

@@ -16,7 +16,10 @@ assert.strictEqual(parseAmount('2026-07-31'), 0, 'YYYY-MM-DD must not become an 
 assert.strictEqual(parseAmount('18 Sep 2026'), 0, 'DD MMM YYYY must not become an amount');
 assert.strictEqual(parseAmount('84,500.00'), 84500, 'Normal credit amount should parse');
 assert.strictEqual(parseAmount('(12000)'), -12000, 'Parentheses should mark a debit');
-console.log('✔ parseAmount rejects dates and keeps real money values');
+assert.strictEqual(parseAmount('45000'), 45000, '45000 must parse as money amount, not serial date');
+assert.strictEqual(parseAmount('42300.00'), 42300, '42300 must parse as money amount');
+assert.strictEqual(parseAmount('51400'), 51400, '51400 must parse as money amount');
+console.log('✔ parseAmount rejects dates and keeps real money values (including 36k-62k range)');
 
 assert.ok(isValidTransactionDate('31/07/2026'));
 assert.ok(isValidTransactionDate('18 Sep 2026'));
